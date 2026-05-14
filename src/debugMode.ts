@@ -1,6 +1,6 @@
 import { TAbstractFile, TFolder, TFile, Vault } from "obsidian";
 
-import type { SyncPlanType } from "./sync";
+import type { SyncPlanType } from "./syncV3";
 import {
   readAllSyncPlanRecordTextsByVault,
   readAllLogRecordTextsByVault,

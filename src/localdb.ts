@@ -4,10 +4,13 @@ import { nanoid } from "nanoid";
 import { requireApiVersion, TAbstractFile, TFile, TFolder } from "obsidian";
 
 import { API_VER_STAT_FOLDER, SUPPORTED_SERVICES_TYPE } from "./baseTypes";
-import type { SyncPlanType } from "./sync";
+import type { Entity } from "./baseTypes";
+import type { SyncPlanType } from "./syncV3";
 import { statFix, toText, unixTimeToStr } from "./misc";
 
 import { log } from "./moreOnLog";
+
+export const DB_SCHEMA_VERSION = "20240601";
 
 const DB_VERSION_NUMBER_IN_HISTORY = [20211114, 20220108, 20220326];
 export const DEFAULT_DB_VERSION_NUMBER: number = 20220326;
@@ -58,6 +61,8 @@ export interface InternalDBs {
   syncPlansTbl: LocalForage;
   vaultRandomIDMappingTbl: LocalForage;
   loggerOutputTbl: LocalForage;
+  prevSyncRecordsTbl: LocalForage;
+  fileContentHistoryTbl: LocalForage;
 }
 
 /**
@@ -206,6 +211,14 @@ export const prepareDBs = async (
     loggerOutputTbl: localforage.createInstance({
       name: DEFAULT_DB_NAME,
       storeName: DEFAULT_TBL_LOGGER_OUTPUT,
+    }),
+    prevSyncRecordsTbl: localforage.createInstance({
+      name: "remotelysync",
+      storeName: "prevSyncRecords",
+    }),
+    fileContentHistoryTbl: localforage.createInstance({
+      name: "remotelysync",
+      storeName: "fileContentHistory",
     }),
   } as InternalDBs;
 
@@ -488,17 +501,19 @@ export const clearAllSyncMetaMapping = async (db: InternalDBs) => {
 
 export const insertSyncPlanRecordByVault = async (
   db: InternalDBs,
-  syncPlan: SyncPlanType,
-  vaultRandomID: string
+  syncPlan: SyncPlanType | Record<string, any>,
+  vaultRandomID: string,
+  _remoteType?: string
 ) => {
+  const ts = (syncPlan as any).ts ?? Date.now();
   const record = {
-    ts: syncPlan.ts,
-    tsFmt: syncPlan.tsFmt,
+    ts: ts,
+    tsFmt: (syncPlan as any).tsFmt,
     vaultRandomID: vaultRandomID,
-    remoteType: syncPlan.remoteType,
+    remoteType: (syncPlan as any).remoteType ?? _remoteType,
     syncPlan: JSON.stringify(syncPlan /* directly stringify */, null, 2),
   } as SyncPlanRecord;
-  await db.syncPlansTbl.setItem(`${vaultRandomID}\t${syncPlan.ts}`, record);
+  await db.syncPlansTbl.setItem(`${vaultRandomID}\t${ts}`, record);
 };
 
 export const clearAllSyncPlanRecords = async (db: InternalDBs) => {
@@ -652,4 +667,90 @@ export const clearExpiredLoggerOutputRecords = async (db: InternalDBs) => {
     ps.push(db.loggerOutputTbl.removeItem(element));
   });
   await Promise.all(ps);
+};
+
+export const upsertPrevSyncRecordByVaultAndProfile = async (
+  db: InternalDBs,
+  vaultRandomID: string,
+  profileID: string,
+  prevSync: Entity
+): Promise<void> => {
+  const entityKey = prevSync.keyRaw ?? prevSync.key ?? "";
+  const k = `${vaultRandomID}\t${profileID}\t${entityKey}`;
+  await db.prevSyncRecordsTbl.setItem(k, prevSync);
+};
+
+export const getAllPrevSyncRecordsByVaultAndProfile = async (
+  db: InternalDBs,
+  vaultRandomID: string,
+  profileID: string
+): Promise<Entity[]> => {
+  const res: Entity[] = [];
+  const prefix = `${vaultRandomID}\t${profileID}\t`;
+  await db.prevSyncRecordsTbl.iterate((value: any, key: string) => {
+    if (key.startsWith(prefix)) {
+      if (value !== null && value !== undefined) {
+        res.push(value as Entity);
+      }
+    }
+  });
+  return res;
+};
+
+export const clearPrevSyncRecordByVaultAndProfile = async (
+  db: InternalDBs,
+  vaultRandomID: string,
+  profileID: string,
+  key: string
+): Promise<void> => {
+  await db.prevSyncRecordsTbl.removeItem(
+    `${vaultRandomID}\t${profileID}\t${key}`
+  );
+};
+
+export const upsertFileContentHistoryByVaultAndProfile = async (
+  db: InternalDBs,
+  vaultRandomID: string,
+  profileID: string,
+  prevSync: Entity,
+  prevContent: ArrayBuffer
+): Promise<void> => {
+  const entityKey = prevSync.keyRaw ?? prevSync.key ?? "";
+  await db.fileContentHistoryTbl.setItem(
+    `${vaultRandomID}\t${profileID}\t${entityKey}`,
+    prevContent
+  );
+};
+
+export const getFileContentHistoryByVaultAndProfile = async (
+  db: InternalDBs,
+  vaultRandomID: string,
+  profileID: string,
+  prevSync: Entity
+): Promise<ArrayBuffer | null | undefined> => {
+  const entityKey = prevSync.keyRaw ?? prevSync.key ?? "";
+  return (await db.fileContentHistoryTbl.getItem(
+    `${vaultRandomID}\t${profileID}\t${entityKey}`
+  )) as ArrayBuffer | null | undefined;
+};
+
+export const clearFileContentHistoryByVaultAndProfile = async (
+  db: InternalDBs,
+  vaultRandomID: string,
+  profileID: string,
+  key: string
+): Promise<void> => {
+  await db.fileContentHistoryTbl.removeItem(
+    `${vaultRandomID}\t${profileID}\t${key}`
+  );
+};
+
+export const insertProfilerResultByVault = async (
+  db: InternalDBs,
+  result: string,
+  vaultRandomID: string,
+  remoteType: string
+): Promise<void> => {
+  const key = `${vaultRandomID}\t${remoteType}\t${Date.now()}`;
+  await db.syncPlansTbl.setItem(key, result);
 };

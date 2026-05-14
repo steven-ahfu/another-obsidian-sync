@@ -341,7 +341,7 @@ export const getTypeName = (obj: any) => {
  * @param x
  * @returns
  */
-export const atWhichLevel = (x: string) => {
+export const atWhichLevel = (x: string | undefined) => {
   if (
     x === undefined ||
     x === "" ||
@@ -349,7 +349,7 @@ export const atWhichLevel = (x: string) => {
     x === ".." ||
     x.startsWith("/")
   ) {
-    log.debug(`do not know which level for ${x}`);
+    throw Error(`do not know which level for ${x}`);
   }
   let y = x;
   if (x.endsWith("/")) {
@@ -362,9 +362,12 @@ export const checkHasSpecialCharForDir = (x: string) => {
   return /[?/\\]/.test(x);
 };
 
-export const unixTimeToStr = (x: number | undefined | null) => {
+export const unixTimeToStr = (x: number | undefined | null, hasMs = false) => {
   if (x === undefined || x === null || Number.isNaN(x)) {
     return undefined;
+  }
+  if (hasMs) {
+    return (moment as any)(x).toISOString(true) as string;
   }
   return (moment as any)(x).format() as string;
 };
@@ -455,6 +458,45 @@ export const statFix = async (vault: Vault, path: string) => {
   return s;
 };
 
+/**
+ * https://stackoverflow.com/questions/39538473/using-settimeout-on-promise-chain
+ * @param ms
+ * @returns
+ */
+export const delay = (ms: number) =>
+  new Promise((resolve) => setTimeout(resolve, ms));
+
+export const splitFileSizeToChunkRanges = (
+  totalSize: number,
+  chunkSize: number
+) => {
+  if (totalSize < 0) {
+    throw Error(`totalSize should not be negative`);
+  }
+  if (chunkSize <= 0) {
+    throw Error(`chunkSize should not be negative or zero`);
+  }
+
+  if (totalSize === 0) {
+    return [];
+  }
+  if (totalSize <= chunkSize) {
+    return [{ start: 0, end: totalSize - 1 }];
+  }
+
+  const res: { start: number; end: number }[] = [];
+
+  const blocksCount = Math.ceil((totalSize * 1.0) / chunkSize);
+
+  for (let i = 0; i < blocksCount; ++i) {
+    res.push({
+      start: i * chunkSize,
+      end: Math.min((i + 1) * chunkSize - 1, totalSize - 1),
+    });
+  }
+  return res;
+};
+
 export function getLastSynced(i18n: I18n, lastSuccessSyncMillis?: number): {lastSyncMsg: string, lastSyncLabelMsg: string} {
   const t = (x: TransItemType, vars?: any) => {
     return i18n.t(x, vars);
@@ -504,3 +546,129 @@ export function getLastSynced(i18n: I18n, lastSuccessSyncMillis?: number): {last
 
   return lastSynced;
 }
+
+export const isSpecialFolderNameToSkip = (
+  x: string,
+  more: string[] | undefined
+) => {
+  const specialFolders = [
+    ".git",
+    ".github",
+    ".gitlab",
+    ".svn",
+    "node_modules",
+    ".DS_Store",
+    "__MACOSX ",
+    "Icon\r",
+    "desktop.ini",
+    "Desktop.ini",
+    "thumbs.db",
+    "Thumbs.db",
+  ].concat(more !== undefined ? more : []);
+  for (const iterator of specialFolders) {
+    if (
+      x === iterator ||
+      x === `${iterator}/` ||
+      x.endsWith(`/${iterator}`) ||
+      x.endsWith(`/${iterator}/`)
+    ) {
+      return true;
+    }
+  }
+
+  // microsoft tmp files...
+  const p = x.split("/");
+  if (p.length > 0) {
+    const f = p[p.length - 1]; // file name
+    if (f.startsWith("~$")) {
+      const suffixList = ["doc", "docx", "ppt", "pptx", "xls", "xlsx"];
+      for (const suffix of suffixList) {
+        if (f.endsWith(`.${suffix}`)) {
+          return true;
+        }
+      }
+    }
+  }
+
+  return false;
+};
+
+/**
+ * https://stackoverflow.com/questions/1248302/how-to-get-the-size-of-a-javascript-object
+ * @param object
+ * @returns bytes
+ */
+export const roughSizeOfObject = (object: any) => {
+  const objectList: any[] = [];
+  const stack = [object];
+  let bytes = 0;
+
+  while (stack.length) {
+    const value = stack.pop();
+
+    switch (typeof value) {
+      case "boolean":
+        bytes += 4;
+        break;
+      case "string":
+        bytes += value.length * 2;
+        break;
+      case "number":
+        bytes += 8;
+        break;
+      case "object":
+        if (!objectList.includes(value)) {
+          objectList.push(value);
+          for (const prop in value) {
+            if (value.hasOwnProperty(prop)) {
+              stack.push(value[prop]);
+            }
+          }
+        }
+        break;
+    }
+  }
+  return bytes;
+};
+
+/**
+ * https://learn.microsoft.com/en-us/windows/win32/fileio/naming-a-file#naming-conventions
+ * https://support.microsoft.com/en-us/office/restrictions-and-limitations-in-onedrive-and-sharepoint-64883a5d-228e-48f5-b3d2-eb39e07630fa#invalidcharacters
+ */
+export const checkValidName = (x: string) => {
+  if (x === undefined || x === "") {
+    return {
+      reason: "empty",
+      result: false,
+    };
+  }
+
+  const invalidChars = '*"<>:|?'.split("");
+  for (const c of invalidChars) {
+    if (x.includes(c)) {
+      return {
+        reason: `reserved character: ${c}`,
+        result: false,
+      };
+    }
+  }
+
+  for (const c of [".", ".."]) {
+    if (
+      x === c ||
+      x.endsWith(`/${c}`) ||
+      x.startsWith(`${c}/`) ||
+      x.includes(`/${c}/`)
+    ) {
+      return {
+        reason: `directory being ${c}`,
+        result: false,
+      };
+    }
+  }
+
+  return {
+    reason: "",
+    result: true,
+  };
+};

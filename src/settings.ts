@@ -32,17 +32,22 @@ import {
   clearExpiredLoggerOutputRecords,
 } from "./localdb";
 import type RemotelySavePlugin from "./main"; // unavoidable
-import { RemoteClient } from "./remote";
+import { getClient } from "./fsGetter";
 import {
   DEFAULT_DROPBOX_CONFIG,
   getAuthUrlAndVerifier as getAuthUrlAndVerifierDropbox,
   sendAuthReq as sendAuthReqDropbox,
   setConfigBySuccessfullAuthInplace,
-} from "./remoteForDropbox";
+  FakeFsDropbox,
+} from "./fsDropbox";
 import {
   DEFAULT_ONEDRIVE_CONFIG,
   getAuthUrlAndVerifier as getAuthUrlAndVerifierOnedrive,
-} from "./remoteForOnedrive";
+  AccessCodeResponseSuccessfulType as OnedriveAccessCodeResponseSuccessfulType,
+  FakeFsOnedrive,
+} from "./fsOnedrive";
+import { DEFAULT_S3_CONFIG, FakeFsS3 } from "./fsS3";
+import { DEFAULT_WEBDAV_CONFIG, FakeFsWebdav } from "./fsWebdav";
 import { messyConfigToNormal } from "./configPersist";
 import type { TransItemType } from "./i18n";
 import { checkHasSpecialCharForDir } from "./misc";
@@ -55,7 +60,6 @@ import {
 } from "./moreOnLog";
 import {encryptStringToBase64url} from "./encrypt";
 import {DEFAULT_FILE_NAME_FOR_METADATAONREMOTE, DEFAULT_FILE_NAME_FOR_METADATAONREMOTE2} from "./metadataOnRemote";
-import {getRemoteMetadata, uploadExtraMeta} from "./sync";
 
 class PasswordModal extends Modal {
   plugin: RemotelySavePlugin;
@@ -331,7 +335,8 @@ class DropboxAuthModal extends Modal {
               const authRes = await sendAuthReqDropbox(
                 this.plugin.settings.dropbox.clientID,
                 verifier,
-                authCode
+                authCode,
+                (err: any) => { console.error("Dropbox auth error:", err); }
               );
               const self = this;
               setConfigBySuccessfullAuthInplace(
@@ -339,16 +344,12 @@ class DropboxAuthModal extends Modal {
                 authRes,
                 () => self.plugin.saveSettings()
               );
-              const client = new RemoteClient(
-                "dropbox",
-                undefined,
-                undefined,
+              const client = new FakeFsDropbox(
                 this.plugin.settings.dropbox,
-                undefined,
                 this.app.vault.getName(),
                 () => self.plugin.saveSettings()
               );
-              const username = await client.getUser();
+              const username = await client.getUserDisplayName();
               this.plugin.settings.dropbox.username = username;
               await this.plugin.saveSettings();
               new Notice(
@@ -869,16 +870,13 @@ export class RemotelySaveSettingTab extends PluginSettingTab {
         button.setButtonText(t("settings_checkonnectivity_button"));
         button.onClick(async () => {
           new Notice(t("settings_checkonnectivity_checking"));
-          const client = new RemoteClient("s3", this.plugin.settings.s3);
-          const errors = { msg: "" };
-          const res = await client.checkConnectivity((err: any) => {
-            errors.msg = err;
-          });
-          if (res) {
+          try {
+            const client = new FakeFsS3(this.plugin.settings.s3, this.app.vault.getName(), false);
+            await client.walkPartial();
             new Notice(t("settings_s3_connect_succ"));
-          } else {
+          } catch (err: any) {
             new Notice(t("settings_s3_connect_fail"));
-            new Notice(errors.msg);
+            new Notice(`${err?.message ?? err}`);
           }
         });
       });
@@ -935,12 +933,8 @@ export class RemotelySaveSettingTab extends PluginSettingTab {
         button.onClick(async () => {
           try {
             const self = this;
-            const client = new RemoteClient(
-              "dropbox",
-              undefined,
-              undefined,
+            const client = new FakeFsDropbox(
               this.plugin.settings.dropbox,
-              undefined,
               this.app.vault.getName(),
               () => self.plugin.saveSettings()
             );
@@ -1050,25 +1044,17 @@ export class RemotelySaveSettingTab extends PluginSettingTab {
         button.onClick(async () => {
           new Notice(t("settings_checkonnectivity_checking"));
           const self = this;
-          const client = new RemoteClient(
-            "dropbox",
-            undefined,
-            undefined,
-            this.plugin.settings.dropbox,
-            undefined,
-            this.app.vault.getName(),
-            () => self.plugin.saveSettings()
-          );
-
-          const errors = { msg: "" };
-          const res = await client.checkConnectivity((err: any) => {
-            errors.msg = `${err}`;
-          });
-          if (res) {
+          try {
+            const client = new FakeFsDropbox(
+              this.plugin.settings.dropbox,
+              this.app.vault.getName(),
+              () => self.plugin.saveSettings()
+            );
+            await client.walkPartial();
             new Notice(t("settings_dropbox_connect_succ"));
-          } else {
+          } catch (err: any) {
             new Notice(t("settings_dropbox_connect_fail"));
-            new Notice(errors.msg);
+            new Notice(`${err?.message ?? err}`);
           }
         });
       });
@@ -1199,25 +1185,17 @@ export class RemotelySaveSettingTab extends PluginSettingTab {
         button.onClick(async () => {
           new Notice(t("settings_checkonnectivity_checking"));
           const self = this;
-          const client = new RemoteClient(
-            "onedrive",
-            undefined,
-            undefined,
-            undefined,
-            this.plugin.settings.onedrive,
-            this.app.vault.getName(),
-            () => self.plugin.saveSettings()
-          );
-
-          const errors = { msg: "" };
-          const res = await client.checkConnectivity((err: any) => {
-            errors.msg = `${err}`;
-          });
-          if (res) {
+          try {
+            const client = new FakeFsOnedrive(
+              this.plugin.settings.onedrive,
+              this.app.vault.getName(),
+              () => self.plugin.saveSettings()
+            );
+            await client.walkPartial();
             new Notice(t("settings_onedrive_connect_succ"));
-          } else {
+          } catch (err: any) {
             new Notice(t("settings_onedrive_connect_fail"));
-            new Notice(errors.msg);
+            new Notice(`${err?.message ?? err}`);
           }
         });
       });
@@ -1421,28 +1399,21 @@ export class RemotelySaveSettingTab extends PluginSettingTab {
         button.onClick(async () => {
           new Notice(t("settings_checkonnectivity_checking"));
           const self = this;
-          const client = new RemoteClient(
-            "webdav",
-            undefined,
-            this.plugin.settings.webdav,
-            undefined,
-            undefined,
-            this.app.vault.getName(),
-            () => self.plugin.saveSettings()
-          );
-          const errors = { msg: "" };
-          const res = await client.checkConnectivity((err: any) => {
-            errors.msg = `${err}`;
-          });
-          if (res) {
+          try {
+            const client = new FakeFsWebdav(
+              this.plugin.settings.webdav,
+              this.app.vault.getName(),
+              () => self.plugin.saveSettings()
+            );
+            await client.walkPartial();
             new Notice(t("settings_webdav_connect_succ"));
-          } else {
+          } catch (err: any) {
             if (VALID_REQURL) {
               new Notice(t("settings_webdav_connect_fail"));
             } else {
               new Notice(t("settings_webdav_connect_fail_withcors"));
             }
-            new Notice(errors.msg);
+            new Notice(`${err?.message ?? err}`);
           }
         });
       });
@@ -1510,6 +1481,52 @@ export class RemotelySaveSettingTab extends PluginSettingTab {
         button.onClick(async () => {
           new PasswordModal(this.app, this.plugin, newPassword).open();
         });
+      });
+
+    new Setting(basicDiv)
+      .setName("Encryption cipher")
+      .setDesc("Encryption format. AES-256-GCM is the default secure option. rclone is compatible with rclone-encrypted remotes.")
+      .addDropdown((dropdown) => {
+        dropdown
+          .addOption("aes-256-gcm", "AES-256-GCM (default)")
+          .addOption("rclone", "rclone-compatible")
+          .setValue(this.plugin.settings.cipherMethod ?? "aes-256-gcm")
+          .onChange(async (value) => {
+            this.plugin.settings.cipherMethod = value as any;
+            await this.plugin.saveSettings();
+          });
+      });
+
+    new Setting(basicDiv)
+      .setName("Sync direction")
+      .setDesc("Bidirectional syncs both ways. Push-only uploads local changes. Pull-only downloads remote changes.")
+      .addDropdown((dropdown) => {
+        dropdown
+          .addOption("bidirectional", "Bidirectional (default)")
+          .addOption("incremental_push_only", "Push only")
+          .addOption("incremental_pull_only", "Pull only")
+          .setValue(this.plugin.settings.syncDirection ?? "bidirectional")
+          .onChange(async (value) => {
+            this.plugin.settings.syncDirection = value as any;
+            await this.plugin.saveSettings();
+          });
+      });
+
+    new Setting(basicDiv)
+      .setName("Conflict resolution")
+      .setDesc("How to handle conflicting changes. Smart conflict merges markdown files using 3-way merge.")
+      .addDropdown((dropdown) => {
+        dropdown
+          .addOption("smart_conflict", "Smart conflict (3-way merge)")
+          .addOption("keep_newer", "Keep newer")
+          .addOption("keep_larger", "Keep larger")
+          .addOption("keep_remote", "Keep remote")
+          .addOption("keep_local", "Keep local")
+          .setValue(this.plugin.settings.conflictAction ?? "smart_conflict")
+          .onChange(async (value) => {
+            this.plugin.settings.conflictAction = value as any;
+            await this.plugin.saveSettings();
+          });
       });
 
     new Setting(basicDiv)
@@ -2026,15 +2043,8 @@ export class RemotelySaveSettingTab extends PluginSettingTab {
 
           await this.deleteRemoteMetadata();
 
-          await uploadExtraMeta(this.getClient(),
-            this.app.vault,
-            undefined,
-            undefined,
-            [],
-            this.plugin.settings.password );
-            
           this.deletingRemoteMeta = false;
-          
+
           new Notice(t("settings_reset_sync_metadata_notice_end"));
           log.debug("Remote metadata file deleted. (2/2)")
         });
@@ -2042,23 +2052,21 @@ export class RemotelySaveSettingTab extends PluginSettingTab {
   }
 
   private async deleteRemoteMetadata() {
-    const client = this.getClient();
-    const remoteFiles = await client.listFromRemote();
-    const remoteMetadata = await getRemoteMetadata(remoteFiles.Contents, client, this.plugin.settings.password)
-
-    await client.deleteFromRemote(DEFAULT_FILE_NAME_FOR_METADATAONREMOTE, this.plugin.settings.password, remoteMetadata.remoteEncryptedKey);
-  }
-
-  private getClient() {
-    return new RemoteClient(
-      this.plugin.settings.serviceType,
-      this.plugin.settings.s3,
-      this.plugin.settings.webdav,
-      this.plugin.settings.dropbox,
-      this.plugin.settings.onedrive,
+    const client = getClient(
+      this.plugin.settings,
       this.app.vault.getName(),
       () => this.plugin.saveSettings()
-    )
+    );
+    try {
+      await client.rm(DEFAULT_FILE_NAME_FOR_METADATAONREMOTE);
+    } catch (e) {
+      log.debug(`deleteRemoteMetadata: could not delete ${DEFAULT_FILE_NAME_FOR_METADATAONREMOTE}: ${e}`);
+    }
+    try {
+      await client.rm(DEFAULT_FILE_NAME_FOR_METADATAONREMOTE2);
+    } catch (e) {
+      log.debug(`deleteRemoteMetadata: could not delete ${DEFAULT_FILE_NAME_FOR_METADATAONREMOTE2}: ${e}`);
+    }
   }
 
   hide() {

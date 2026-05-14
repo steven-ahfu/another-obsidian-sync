@@ -9,7 +9,6 @@ import {
 } from "obsidian";
 import cloneDeep from "lodash/cloneDeep";
 import type {
-  FileOrFolderMixedState, RemoteItem,
   RemotelySavePluginSettings,
   SyncTriggerSourceType,
 } from "./baseTypes";
@@ -23,39 +22,33 @@ import { importQrCodeUri } from "./importExport";
 import {
   insertDeleteRecordByVault,
   insertRenameRecordByVault,
-  insertSyncPlanRecordByVault,
-  loadFileHistoryTableByVault,
   prepareDBs,
   InternalDBs,
   insertLoggerOutputByVault,
   clearExpiredLoggerOutputRecords,
-  clearExpiredSyncPlanRecords, FileFolderHistoryRecord,
+  clearExpiredSyncPlanRecords,
 } from "./localdb";
-import { RemoteClient } from "./remote";
+import { syncer, SyncStatusType } from "./syncV3";
+import { getClient } from "./fsGetter";
+import { FakeFsEncrypt } from "./fsEncrypt";
+import { FakeFsLocal } from "./fsLocal";
 import {
   DEFAULT_DROPBOX_CONFIG,
   getAuthUrlAndVerifier as getAuthUrlAndVerifierDropbox,
   sendAuthReq as sendAuthReqDropbox,
   setConfigBySuccessfullAuthInplace as setConfigBySuccessfullAuthInplaceDropbox,
-} from "./remoteForDropbox";
+  FakeFsDropbox,
+} from "./fsDropbox";
 import {
   AccessCodeResponseSuccessfulType,
   DEFAULT_ONEDRIVE_CONFIG,
   sendAuthReq as sendAuthReqOnedrive,
   setConfigBySuccessfullAuthInplace as setConfigBySuccessfullAuthInplaceOnedrive,
-} from "./remoteForOnedrive";
-import { DEFAULT_S3_CONFIG } from "./remoteForS3";
-import { DEFAULT_WEBDAV_CONFIG } from "./remoteForWebdav";
+  FakeFsOnedrive,
+} from "./fsOnedrive";
+import { DEFAULT_S3_CONFIG } from "./fsS3";
+import { DEFAULT_WEBDAV_CONFIG } from "./fsWebdav";
 import { RemotelySaveSettingTab } from "./settings";
-import { 
-  getRemoteMetadata, 
-  getRemoteStates, 
-  SyncPlanType, 
-  SyncStatusType,
-  doActualSync, 
-  getSyncPlan, 
-  isPasswordOk
-} from "./sync";
 import { messyConfigToNormal, normalConfigToMessy } from "./configPersist";
 import { ObsConfigDirFileType, listFilesInObsFolder } from "./obsFolderLister";
 import { I18n } from "./i18n";
@@ -136,202 +129,97 @@ export default class RemotelySavePlugin extends Plugin {
   statusBarObserver?: MutationObserver;
 
   async syncRun(triggerSource: SyncTriggerSourceType = "manual") {
-    this.isManual = triggerSource === "manual";
-    this.isAlreadyRunning = false;
-    const MAX_STEPS = this.settings.debugEnabled ? 8 : 2;
-    await this.createTrashIfDoesNotExist();
-
-    const t = (x: TransItemType, vars?: any) => {
-      return this.i18n.t(x, vars);
-    };
-
-    const getNotice = (x: string, step: number, timeout?: number) => {
-      if (this.isManual || triggerSource === "manual" || triggerSource === "dry") {
-        // Display mobile or desktop without status bar notices or if already running notice appears
-        if (!this.settings.debugEnabled) {
-          if (this.isAlreadyRunning || Platform.isMobile || !this.settings.enableStatusBarInfo) {
-            if (step === 1) {
-              new Notice("1/" + this.i18n.t("syncrun_step1", {
-                maxSteps: "2", serviceType: this.settings.serviceType
-              }), timeout);
-            } else if (step === 8) {
-              new Notice("2/" + this.i18n.t("syncrun_step8", {maxSteps: "2"}), timeout);
-            }
-          }
-          
-          return;
-        }
-
-        // Display debug notices
-        const prefix = step > -1 ? step + "/" : "";
-        new Notice(prefix + x, timeout);
-      }
-    };
-
     // Make sure two syncs can't run at the same time
     if (this.syncStatus !== "idle") {
-      if (triggerSource == "manual") {
-        // Show notice for debug, mobile, or desktop
+      if (triggerSource === "manual") {
         if (this.settings.debugEnabled) {
-          new Notice(t("syncrun_debug_alreadyrunning", {stage: this.syncStatus}));
+          new Notice(this.i18n.t("syncrun_debug_alreadyrunning", {stage: this.syncStatus}));
         } else {
-          new Notice("1/" + t("syncrun_alreadyrunning", {maxSteps: MAX_STEPS}));
-          this.isAlreadyRunning = true;
+          new Notice("1/" + this.i18n.t("syncrun_alreadyrunning", {maxSteps: "2"}));
         }
-
         log.debug(this.manifest.name, " already running in stage: ", this.syncStatus);
-
-        if (this.currSyncMsg !== undefined && this.currSyncMsg !== "") {
-          log.debug(this.currSyncMsg);
-        }  
       }
-
       return;
     }
 
+    log.debug(`[main] syncRun: starting, trigger=${triggerSource}`);
+    this.setSyncIcon(true, triggerSource);
+
     try {
-      this.setSyncIcon(true, triggerSource);
-
-      // Step count will be wrong for dry mode, but that's fine. It already was off by 1
-      if (triggerSource === "dry") {
-        getNotice(
-          t("syncrun_step0", {
-            maxSteps: `${MAX_STEPS}`,
-          }), 0
-        );
-      }
-
-      getNotice(
-        t("syncrun_step1", {
-          maxSteps: `${MAX_STEPS}`,
-          serviceType: this.settings.serviceType,
-        }), 1
+      const remoteFs = getClient(
+        this.settings,
+        this.app.vault.getName(),
+        async () => { await this.saveSettings(); }
       );
+      log.debug(`[main] syncRun: remoteFs serviceType=${remoteFs.serviceType}`);
 
-      this.updateSyncStatus("preparing");
+      const password = this.settings.password ?? "";
+      const cipherMethod = this.settings.cipherMethod ?? "aes-256-gcm";
+      log.debug(`[main] syncRun: encryption active=${password !== ""} cipherMethod=${cipherMethod}`);
 
-      getNotice(
-        t("syncrun_step2", {
-          maxSteps: `${MAX_STEPS}`,
-        }), 2
-      );
-      this.updateSyncStatus("getting_remote_files_list");
-      const self = this;
-      const client = this.getRemoteClient(self);
-      const remoteRsp = await client.listFromRemote();
+      // Always wrap remote in FakeFsEncrypt — syncer() requires fsEncrypt.innerFs === fsRemote
+      const encryptedRemoteFs = new FakeFsEncrypt(remoteFs, password, cipherMethod);
 
-      getNotice(
-        t("syncrun_step3", {
-          maxSteps: `${MAX_STEPS}`,
-        }), 3
-      );
-
-      this.updateSyncStatus("checking_password");
-      
-      const passwordCheckResult = await isPasswordOk(
-        remoteRsp.Contents,
-        this.settings.password
-      );
-      if (!passwordCheckResult.ok) {
-        getNotice(t("syncrun_passworderr"), -1, 10 * 1000);
-        throw Error(passwordCheckResult.reason);
-      }
-
-      getNotice(
-        t("syncrun_step4", {
-          maxSteps: `${MAX_STEPS}`,
-        }), 4
-      );
-      this.updateSyncStatus("getting_remote_extra_meta");
-
-      const metadataFile = await getRemoteMetadata(remoteRsp.Contents, client, this.settings.password);
-
-      const remoteStates = await getRemoteStates(
-        remoteRsp.Contents, 
-        this.db, 
-        this.vaultRandomID, 
-        client.serviceType, 
-        this.settings.password
-      );
-
-      const origMetadataOnRemote = await this.fetchMetadataFromRemote(metadataFile, client);
-
-      getNotice(
-        t("syncrun_step5", {
-          maxSteps: `${MAX_STEPS}`,
-        }), 5
-      );
-
-      this.updateSyncStatus("getting_local_meta");
-      const local = this.app.vault.getAllLoadedFiles();
-      const localHistory = await this.getLocalHistory();
-      let localConfigDirContents: ObsConfigDirFileType[] = await listFilesInObsFolder(this.app.vault, this.manifest.name, this.settings.syncTrash);
-
-      getNotice(
-        t("syncrun_step6", {
-          maxSteps: `${MAX_STEPS}`,
-        }), 6
-      );
-
-      this.updateSyncStatus("generating_plan");
-
-      const { plan, sortedKeys, deletions, sizesGoWrong } = await this.getSyncPlan(remoteStates, local, localConfigDirContents, origMetadataOnRemote, localHistory, client, triggerSource);
-
-      await insertSyncPlanRecordByVault(this.db, plan, this.vaultRandomID);
-
-      // The operations above are almost read only and kind of safe.
-      // The operations below begins to write or delete (!!!) something.
-
-      if (triggerSource !== "dry") {
-        getNotice(
-          t("syncrun_step7", {
-            maxSteps: `${MAX_STEPS}`,
-          }), 7
-        );
-
-        this.updateSyncStatus("syncing");
-        await this.doActualSync(client, plan, sortedKeys, metadataFile, origMetadataOnRemote, sizesGoWrong, deletions, self);
-      } else {
-        this.updateSyncStatus("syncing");
-        getNotice(
-          t("syncrun_step7skip", {
-            maxSteps: `${MAX_STEPS}`,
-          }), 7
-        );
-      }
-
-      getNotice(
-        t("syncrun_step8", {
-          maxSteps: `${MAX_STEPS}`,
-        }), 8
-      );
-
-      this.updateSyncStatus("finish");
-
-      log.debug("start getting last synced from remote")
-      this.settings.lastSynced = await this.getMetadataMtime();
-      this.saveSettings();
-      log.debug("finish getting last synced from remote");
-
-      this.updateSyncStatus("idle");
-      this.setSyncIcon(false);
-    } catch (error) {
-      const msg = t("syncrun_abort", {
-        manifestID: this.manifest.id,
-        theDate: `${Date.now()}`,
-        triggerSource: triggerSource,
-        syncStatus: this.syncStatus,
+      const localFs = new FakeFsLocal({
+        vault: this.app.vault,
+        syncConfigDir: this.settings.syncConfigDir ?? false,
+        syncBookmarks: this.settings.syncBookmarks ?? false,
+        syncUnderscoreItems: this.settings.syncUnderscoreItems ?? false,
       });
-      log.error(msg);
-      log.error(error);
-      getNotice(msg, -1,  10 * 1000);
-      if (error instanceof AggregateError) {
-        for (const e of error.errors) {
-          getNotice(e.message, -1,  10 * 1000);
+
+      await syncer(
+        localFs,
+        remoteFs,
+        encryptedRemoteFs,
+        undefined, // profiler
+        this.db,
+        triggerSource,
+        "default", // profileID
+        this.vaultRandomID,
+        this.app.vault.configDir,
+        this.settings,
+        this.manifest.version,
+        async () => { await this.saveSettings(); },
+        (_: number, total: number, toModify: number) =>
+          `Sync would modify ${toModify} of ${total} files, exceeding the safety threshold.`,
+        (isSyncing: boolean) => {
+          if (isSyncing) {
+            this.updateSyncStatus("syncing");
+          } else {
+            this.updateSyncStatus("idle");
+            this.setSyncIcon(false);
+          }
+        },
+        async (src: SyncTriggerSourceType, step: number) => {
+          if (src === "manual" || src === "dry") {
+            if (!this.settings.debugEnabled) {
+              if (step === 1) {
+                new Notice("1/2 " + this.i18n.t("syncrun_step1", {
+                  maxSteps: "2", serviceType: this.settings.serviceType
+                }));
+              } else if (step >= 7) {
+                new Notice("2/2 " + this.i18n.t("syncrun_step8", {maxSteps: "2"}));
+              }
+            }
+          }
+        },
+        async (src: SyncTriggerSourceType, error: Error) => {
+          const msg = this.i18n.t("syncrun_abort", {
+            manifestID: this.manifest.id,
+            theDate: `${Date.now()}`,
+            triggerSource: src,
+            syncStatus: this.syncStatus,
+          });
+          log.error(msg);
+          log.error(error);
+          new Notice(`${msg}\n${error.message}`, 10 * 1000);
+          this.updateSyncStatus("idle");
+          this.setSyncIcon(false);
         }
-      } else {
-        getNotice(error.message, -1, 10 * 1000);
-      }
+      );
+    } catch (e) {
+      log.error("[main] syncRun error:", e);
+      new Notice(`Sync failed: ${(e as any)?.message ?? String(e)}`);
       this.updateSyncStatus("idle");
       this.setSyncIcon(false);
     }
@@ -342,105 +230,6 @@ export default class RemotelySavePlugin extends Plugin {
       // when syncing to a device which never trashed a file we will error if this folder does not exist
       await this.createTrashFolderIfDoesNotExist(this.app.vault);
     }
-  }
-
-  private shouldSyncBasedOnSyncPlan = async (syncPlan: SyncPlanType) => {
-    for (const key in syncPlan.mixedStates) {
-      const fileState = syncPlan.mixedStates[key];
-
-      if (fileState.existLocal && fileState.existRemote && fileState.mtimeLocal! > fileState.mtimeRemote!) {
-        return true;
-      }
-    }
-    return false;
-  };
-
-  private async doActualSync(client: RemoteClient, plan: SyncPlanType, sortedKeys: string[], metadataFile: FileOrFolderMixedState, origMetadataOnRemote: MetadataOnRemote, sizesGoWrong: FileOrFolderMixedState[], deletions: DeletionOnRemote[], self: this) {
-    await doActualSync(
-      client,
-      this.db,
-      this.vaultRandomID,
-      this.app.vault,
-      plan,
-      sortedKeys,
-      metadataFile,
-      origMetadataOnRemote,
-      sizesGoWrong,
-      deletions,
-      (key: string) => self.trash(key),
-      this.settings.password,
-      this.settings.lastSynced,
-      this.settings.concurrency,
-      (ss: FileOrFolderMixedState[]) => {
-        new SizesConflictModal(
-          self.app,
-          self,
-          this.settings.skipSizeLargerThan,
-          ss,
-          this.settings.password !== ""
-        ).open();
-      },
-      (i: number, total: number) => self.updateStatusBar({i, total})
-    );
-  }
-
-  private async getSyncPlan(remoteStates: FileOrFolderMixedState[], local: TAbstractFile[], localConfigDirContents: ObsConfigDirFileType[], origMetadataOnRemote: MetadataOnRemote, localHistory: FileFolderHistoryRecord[], client: RemoteClient, triggerSource: "manual" | "auto" | "autoOnceInit" | "dry") {
-    return await getSyncPlan(
-      remoteStates,
-      local,
-      localConfigDirContents,
-      origMetadataOnRemote.deletions,
-      localHistory,
-      client.serviceType,
-      triggerSource,
-      this.app.vault,
-      this.settings.syncConfigDir,
-      this.settings.syncTrash,
-      this.settings.syncBookmarks,
-      this.app.vault.configDir,
-      this.settings.syncUnderscoreItems,
-      this.settings.skipSizeLargerThan,
-      this.settings.password
-    );
-  }
-
-  private async getLocalHistory() {
-    return await loadFileHistoryTableByVault(
-      this.db,
-      this.vaultRandomID
-    );
-  }
-
-  private async fetchMetadataFromRemote(metadataFile: FileOrFolderMixedState, client: RemoteClient) {
-    if (metadataFile === undefined) {
-      log.debug("no metadata file, so no fetch");
-      return {
-        deletions: [],
-      } as MetadataOnRemote;
-    }
-
-    const buf = await client.downloadFromRemote(
-      metadataFile.key,
-      this.app.vault,
-      metadataFile.mtimeRemote,
-      this.settings.password,
-      metadataFile.remoteEncryptedKey,
-      true
-    );
-    return deserializeMetadataOnRemote(buf);
-  }
-
-  private getRemoteClient(self: this) {
-    const client = new RemoteClient(
-      this.settings.serviceType,
-      this.settings.s3,
-      this.settings.webdav,
-      this.settings.dropbox,
-      this.settings.onedrive,
-      this.app.vault.getName(),
-      () => self.saveSettings()
-    );
-    return client;
   }
 
   private updateSyncStatus(status: SyncStatusType) {
@@ -648,27 +437,24 @@ export default class RemotelySavePlugin extends Plugin {
           let authRes = await sendAuthReqDropbox(
             this.settings.dropbox.clientID,
             this.oauth2Info.verifier,
-            inputParams.code
+            inputParams.code,
+            (err: any) => { console.error("Dropbox auth error:", err); }
           );
 
           const self = this;
-          setConfigBySuccessfullAuthInplaceDropbox(
+          await setConfigBySuccessfullAuthInplaceDropbox(
             this.settings.dropbox,
             authRes,
             () => self.saveSettings()
           );
 
-          const client = new RemoteClient(
-            "dropbox",
-            undefined,
-            undefined,
+          const client = new FakeFsDropbox(
             this.settings.dropbox,
-            undefined,
             this.app.vault.getName(),
             () => self.saveSettings()
           );
 
-          const username = await client.getUser();
+          const username = await client.getUserDisplayName();
           this.settings.dropbox.username = username;
           await this.saveSettings();
 
@@ -730,7 +516,8 @@ export default class RemotelySavePlugin extends Plugin {
             this.settings.onedrive.clientID,
             this.settings.onedrive.authority,
             inputParams.code,
-            this.oauth2Info.verifier
+            this.oauth2Info.verifier,
+            (err: any) => { console.error("OneDrive auth error:", err); }
           );
 
           if ((rsp as any).error !== undefined) {
@@ -738,22 +525,18 @@ export default class RemotelySavePlugin extends Plugin {
           }
 
           const self = this;
-          setConfigBySuccessfullAuthInplaceOnedrive(
+          await setConfigBySuccessfullAuthInplaceOnedrive(
             this.settings.onedrive,
             rsp as AccessCodeResponseSuccessfulType,
             () => self.saveSettings()
           );
 
-          const client = new RemoteClient(
-            "onedrive",
-            undefined,
-            undefined,
-            undefined,
+          const onedriveClient = new FakeFsOnedrive(
             this.settings.onedrive,
             this.app.vault.getName(),
             () => self.saveSettings()
           );
-          this.settings.onedrive.username = await client.getUser();
+          this.settings.onedrive.username = await onedriveClient.getUserDisplayName();
           await this.saveSettings();
 
           this.oauth2Info.verifier = ""; // reset it
@@ -1286,52 +1069,24 @@ export default class RemotelySavePlugin extends Plugin {
     }
   }
   
-  async getMetadataMtime() {
-    const client = this.getRemoteClient(this);
-    
-    const remoteFiles = await client.listFromRemote();
-    const remoteMetadataFile = await getRemoteMetadata(remoteFiles.Contents, client, this.settings.password);
-
-    const lastSynced = remoteMetadataFile.mtimeRemote;
-
-    if (lastSynced === undefined && this.settings.lastSynced !== undefined) {
+  async getMetadataMtime(): Promise<number | undefined> {
+    try {
+      const client = getClient(
+        this.settings,
+        this.app.vault.getName(),
+        async () => { await this.saveSettings(); }
+      );
+      const entities = await client.walkPartial();
+      const { DEFAULT_FILE_NAME_FOR_METADATAONREMOTE } = await import("./metadataOnRemote");
+      const metaEntity = entities.find((e) => e.key === DEFAULT_FILE_NAME_FOR_METADATAONREMOTE);
+      if (metaEntity === undefined) {
+        return this.settings.lastSynced;
+      }
+      return metaEntity.mtimeSvr ?? metaEntity.mtimeCli;
+    } catch (e) {
+      log.debug("[main] getMetadataMtime error:", e);
       return this.settings.lastSynced;
     }
-
-    return lastSynced;
-  }
-
-  private async getSyncPlan2() {
-    // If we don't create trash folder and it's used it will result in an error.
-    await this.createTrashIfDoesNotExist();
-    const client = this.getRemoteClient(this);
-    const remoteRsp = await client.listFromRemote();
-
-    const passwordCheckResult = await isPasswordOk(
-      remoteRsp.Contents,
-      this.settings.password
-    );
-
-    const metadataFile = await getRemoteMetadata(remoteRsp.Contents, client, this.settings.password);
-
-    const remoteStates = await getRemoteStates(
-      remoteRsp.Contents, 
-      this.db, 
-      this.vaultRandomID, 
-      client.serviceType, 
-      this.settings.password
-    );
-
-    const local = this.app.vault.getAllLoadedFiles();
-    const localHistory = await this.getLocalHistory();
-    let localConfigDirContents: ObsConfigDirFileType[] = await listFilesInObsFolder(this.app.vault, this.manifest.id, this.settings.syncTrash);
-    const origMetadataOnRemote = await this.fetchMetadataFromRemote(metadataFile, client);
-
-
-    const {
-      plan
-    } = await this.getSyncPlan(remoteStates, local, localConfigDirContents, origMetadataOnRemote, localHistory, client, "auto");
-    return plan;
   }
 
   enableAutoSyncIfSet() {

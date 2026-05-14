@@ -6,6 +6,16 @@
 import { Platform, requireApiVersion } from "obsidian";
 import type { LangType, LangTypeAndAuto } from "./i18n";
 
+declare global {
+  var DEFAULT_DROPBOX_APP_KEY: string;
+  var DEFAULT_ONEDRIVE_CLIENT_ID: string;
+  var DEFAULT_ONEDRIVE_AUTHORITY: string;
+}
+
+export const DROPBOX_APP_KEY = global.DEFAULT_DROPBOX_APP_KEY;
+export const ONEDRIVE_CLIENT_ID = global.DEFAULT_ONEDRIVE_CLIENT_ID;
+export const ONEDRIVE_AUTHORITY = global.DEFAULT_ONEDRIVE_AUTHORITY;
+
 export const DEFAULT_CONTENT_TYPE = "application/octet-stream";
 
 export type SUPPORTED_SERVICES_TYPE = "s3" | "webdav" | "dropbox" | "onedrive";
@@ -25,6 +35,10 @@ export interface S3Config {
   partsConcurrency?: number;
   forcePathStyle?: boolean;
   disableS3MetadataSync: boolean;
+  remotePrefix?: string;
+  useAccurateMTime?: boolean;
+  reverseProxyNoSignUrl?: string;
+  generateFolderObject?: boolean;
 }
 
 export interface DropboxConfig {
@@ -41,6 +55,7 @@ export interface DropboxConfig {
 
 export type WebdavAuthType = "digest" | "basic";
 export type WebdavDepthType =
+  | "auto" // deprecated on 20240116
   | "auto_unknown"
   | "auto_1"
   | "auto_infinity"
@@ -55,6 +70,7 @@ export interface WebdavConfig {
   manualRecursive: boolean; // deprecated in 0.3.6, use depth
   depth?: WebdavDepthType;
   remoteBaseDir?: string;
+  customHeaders?: string;
 }
 
 export interface OnedriveConfig {
@@ -68,6 +84,8 @@ export interface OnedriveConfig {
   username: string;
   credentialsShouldBeDeletedAtTime?: number;
   remoteBaseDir?: string;
+  emptyFile?: "skip" | "error";
+  kind?: "onedrive";
 }
 
 export interface RemotelySavePluginSettings {
@@ -100,6 +118,15 @@ export interface RemotelySavePluginSettings {
    * @deprecated
    */
   vaultRandomID?: string;
+
+  syncDirection?: SyncDirectionType;
+  conflictAction?: ConflictActionType;
+  cipherMethod?: CipherMethodType;
+  ignorePaths?: string[];
+  onlyAllowPaths?: string[];
+  protectModifyPercentage?: number;
+  howToCleanEmptyFolder?: EmptyFolderCleanType;
+  profiler?: ProfilerConfig;
 }
 
 export interface RemoteItem {
@@ -190,3 +217,104 @@ export const DEFAULT_SYNC_PLANS_HISTORY_FILE_PREFIX =
 export const DEFAULT_LOG_HISTORY_FILE_PREFIX = "log_hist_exported_on_";
 
 export type SyncTriggerSourceType = "manual" | "auto" | "dry" | "autoOnceInit";
+
+// ---- V3 sync types (FakeFs architecture) ----
+
+export type CipherMethodType = "aes-256-gcm" | "rclone" | "openssl-base64";
+
+export type SyncDirectionType =
+  | "bidirectional"
+  | "incremental_pull_only"
+  | "incremental_push_only"
+  | "incremental_pull_and_delete_only"
+  | "incremental_push_and_delete_only";
+
+export type ConflictActionType =
+  | "keep_newer"
+  | "keep_larger"
+  | "smart_conflict";
+
+export type EmptyFolderCleanType = "skip" | "clean_both";
+
+export interface ProfilerConfig {
+  enable?: boolean;
+  enablePrinting?: boolean;
+  recordSize?: boolean;
+}
+
+export type DecisionTypeForMixedEntity =
+  | "only_history"
+  | "equal"
+  | "local_is_modified_then_push"
+  | "remote_is_modified_then_pull"
+  | "local_is_created_then_push"
+  | "remote_is_created_then_pull"
+  | "local_is_created_too_large_then_do_nothing"
+  | "remote_is_created_too_large_then_do_nothing"
+  | "local_is_deleted_thus_also_delete_remote"
+  | "remote_is_deleted_thus_also_delete_local"
+  | "conflict_created_then_keep_local"
+  | "conflict_created_then_keep_remote"
+  | "conflict_created_then_smart_conflict"
+  | "conflict_created_then_do_nothing"
+  | "conflict_modified_then_keep_local"
+  | "conflict_modified_then_keep_remote"
+  | "conflict_modified_then_smart_conflict"
+  | "folder_existed_both_then_do_nothing"
+  | "folder_existed_local_then_also_create_remote"
+  | "folder_existed_remote_then_also_create_local"
+  | "folder_to_be_created"
+  | "folder_to_skip"
+  | "folder_to_be_deleted_on_both"
+  | "folder_to_be_deleted_on_remote"
+  | "folder_to_be_deleted_on_local";
+
+/**
+ * uniform representation
+ * everything should be flat and primitive, so that we can copy.
+ */
+export interface Entity {
+  key?: string;
+  keyEnc?: string;
+  keyRaw?: string;
+  mtimeCli?: number;
+  mtimeCliFmt?: string;
+  ctimeCli?: number;
+  ctimeCliFmt?: string;
+  mtimeSvr?: number;
+  mtimeSvrFmt?: string;
+  prevSyncTime?: number;
+  prevSyncTimeFmt?: string;
+  size?: number; // might be unknown or to be filled
+  sizeEnc?: number;
+  sizeRaw?: number;
+  hash?: string;
+  etag?: string;
+  synthesizedFolder?: boolean;
+  synthesizedFile?: boolean;
+}
+
+export interface UploadedType {
+  entity: Entity;
+  mtimeCli?: number;
+}
+
+/**
+ * A replacement of FileOrFolderMixedState
+ */
+export interface MixedEntity {
+  key: string;
+  local?: Entity;
+  prevSync?: Entity;
+  remote?: Entity;
+
+  decisionBranch?: number;
+  decision?: DecisionTypeForMixedEntity;
+  conflictAction?: ConflictActionType;
+
+  change?: boolean;
+
+  sideNotes?: any;
+}
+
+export type SUPPORTED_SERVICES_TYPE_V3 = "s3" | "webdav" | "dropbox" | "onedrive";
