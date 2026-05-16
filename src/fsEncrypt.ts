@@ -74,7 +74,7 @@ export class FakeFsEncrypt extends FakeFs {
   }
 
   async isPasswordOk(): Promise<PasswordCheckType> {
-    const innerWalkResult = await this.walkPartial();
+    const innerWalkResult = await this.innerFs.walkPartial();
 
     if (innerWalkResult === undefined || innerWalkResult.length === 0) {
       return {

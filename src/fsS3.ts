@@ -33,8 +33,8 @@ class AggregateError extends Error {
 }
 import * as mime from "mime-types";
 import { Platform, type RequestUrlParam, requestUrl } from "obsidian";
-// p-queue is ESM-only; use lazy dynamic import at call sites
-type PQueue = import("p-queue").default;
+import PQueueModule from "p-queue";
+const PQueueCtor: typeof PQueueModule = (PQueueModule as any).default ?? PQueueModule;
 import { DEFAULT_CONTENT_TYPE, type S3Config, VALID_REQURL } from "./baseTypes";
 import { bufferToArrayBuffer, getFolderLevels } from "./misc";
 
@@ -484,7 +484,6 @@ export class FakeFsS3 extends FakeFs {
     const mtimeRecords: Record<string, number> = {};
     const ctimeRecords: Record<string, number> = {};
     const partsConcurrency = partial ? 1 : this.s3Config.partsConcurrency;
-    const { default: PQueueCtor } = await import("p-queue");
     const queueHead = new PQueueCtor({
       concurrency: partsConcurrency,
       autoStart: true,

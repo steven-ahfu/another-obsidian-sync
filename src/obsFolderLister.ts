@@ -29,10 +29,10 @@ const isFolderToSkip = (x: string) => {
 
 const isPluginDirItself = (x: string, pluginId: string) => {
   return (
-    x === "remotely-secure" ||
-    x === "remotely-secure/" ||
-    x.endsWith("/remotely-secure") ||
-    x.endsWith("/remotely-secure/")
+    x === "another-obsidian-sync" ||
+    x === "another-obsidian-sync/" ||
+    x.endsWith("/another-obsidian-sync") ||
+    x.endsWith("/another-obsidian-sync/")
   );
 };
 

@@ -137,10 +137,10 @@ export interface RemoteItem {
   etag?: string;
 }
 
-export const COMMAND_URI = "remotely-secure";
-export const COMMAND_CALLBACK = "remotely-secure-cb";
-export const COMMAND_CALLBACK_ONEDRIVE = "remotely-sync-cb-onedrive";
-export const COMMAND_CALLBACK_DROPBOX = "remotely-secure-cb-dropbox";
+export const COMMAND_URI = "another-obsidian-sync";
+export const COMMAND_CALLBACK = "another-obsidian-sync-cb";
+export const COMMAND_CALLBACK_ONEDRIVE = "another-obsidian-sync-cb-onedrive";
+export const COMMAND_CALLBACK_DROPBOX = "another-obsidian-sync-cb-dropbox";
 
 export interface UriParams {
   func?: string;

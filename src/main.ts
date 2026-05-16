@@ -60,7 +60,6 @@ import { SyncAlgoV2Modal } from "./syncAlgoV2Notice";
 import { applyPresetRulesInplace } from "./presetRules";
 
 import { applyLogWriterInplace, log } from "./moreOnLog";
-import AggregateError from "aggregate-error";
 import {
   exportVaultLoggerOutputToFiles,
   exportVaultSyncPlansToFiles,
@@ -193,7 +192,7 @@ export default class RemotelySavePlugin extends Plugin {
         ? await this.getSynthesizedConfigDirDeletions(localConfigDirContents)
         : [];
 
-      await syncer(
+      const syncResult = await syncer(
         localFs,
         remoteFs,
         encryptedRemoteFs,
@@ -211,47 +210,43 @@ export default class RemotelySavePlugin extends Plugin {
         (isSyncing: boolean) => {
           if (isSyncing) {
             this.updateSyncStatus("syncing");
-          } else {
-            this.updateSyncStatus("idle");
-            this.setSyncIcon(false);
           }
+          // idle/icon handled after syncer() returns
         },
-        async (src: SyncTriggerSourceType, step: number) => {
-          if (src === "manual" || src === "dry") {
-            if (!this.settings.debugEnabled) {
-              if (step === 1) {
-                new Notice("1/2 " + this.i18n.t("syncrun_step1", {
-                  maxSteps: "2", serviceType: this.settings.serviceType
-                }));
-              } else if (step >= 7) {
-                new Notice("2/2 " + this.i18n.t("syncrun_step8", {maxSteps: "2"}));
-              }
-            }
-          }
+        undefined, // notifyFunc
+        undefined, // errNotifyFunc — errors surfaced via everythingOk in syncResult
+        undefined, // ribboonFunc
+        undefined, // statusBarFunc
+        async (_src: SyncTriggerSourceType, i: number, total: number) => {
+          this.updateSyncStatus("syncing");
+          this.updateStatusBar({ i, total });
         },
-        async (src: SyncTriggerSourceType, error: Error) => {
-          const msg = this.i18n.t("syncrun_abort", {
-            manifestID: this.manifest.id,
-            theDate: `${Date.now()}`,
-            triggerSource: src,
-            syncStatus: this.syncStatus,
-          });
-          log.error(msg);
-          log.error(error);
-          new Notice(`${msg}\n${error.message}`, 10 * 1000);
-          this.updateSyncStatus("idle");
-          this.setSyncIcon(false);
-        },
-        undefined, // callbackSyncProcess
         synthesizedDeletions
       );
 
-      if (triggerSource !== "dry") {
+      const { uploadCount = 0, downloadCount = 0, deleteCount = 0, everythingOk = true } = syncResult ?? {};
+      this.setSyncIcon(false);
+      if (!everythingOk) {
+        new Notice(`Sync finished with errors — check debug log`, 8000);
+        this.updateSyncStatus("idle");
+      } else if (triggerSource !== "dry") {
+        this.settings.lastSynced = Date.now();
+        await this.saveSettings();
+        const summary = `↑${uploadCount} ↓${downloadCount} ✕${deleteCount}`;
+        this.syncStatusText = summary;
+        this.updateSyncStatus("idle");
+        new Notice(`Sync complete: ${summary}`);
         await this.saveConfigDirSnapshot(localConfigDirContents);
+      } else {
+        this.updateSyncStatus("idle");
       }
     } catch (e) {
-      log.error("[main] syncRun error:", e);
-      new Notice(`Sync failed: ${(e as any)?.message ?? String(e)}`);
+      const msg = (e as any)?.message ?? String(e);
+      const stack = (e as any)?.stack ?? "(no stack)";
+      const cause = (e as any)?.cause ? `\nCause: ${(e as any).cause}` : "";
+      log.error("[main] syncRun error:", msg);
+      log.error("[main] syncRun stack:", stack + cause);
+      new Notice(`Sync failed: ${msg}`);
       this.updateSyncStatus("idle");
       this.setSyncIcon(false);
     }
@@ -372,8 +367,9 @@ export default class RemotelySavePlugin extends Plugin {
     // Update status text
     if (this.syncStatus === "idle") {
       const lastSynced = getLastSynced(this.i18n, this.settings.lastSynced);
-      this.syncStatusText = lastSynced.lastSyncMsg;
-
+      if (!this.syncStatusText || !this.syncStatusText.startsWith("↑")) {
+        this.syncStatusText = lastSynced.lastSyncMsg;
+      }
       if (enabled) {
         this.statusBarElement.setAttribute("aria-label", lastSynced.lastSyncLabelMsg);
       }
@@ -1118,7 +1114,7 @@ export default class RemotelySavePlugin extends Plugin {
       for (let i = 0; i < localConfigContents.length; i++) {
         const file = localConfigContents[i];
 
-        if (file.key.includes(".obsidian/plugins/remotely-secure/")) {
+        if (file.key.includes(".obsidian/plugins/another-obsidian-sync/")) {
           continue;
         }
 
@@ -1158,7 +1154,7 @@ export default class RemotelySavePlugin extends Plugin {
           }
 
           mutation.addedNodes.forEach((node) => {
-            if ((node as Element).className === "status-bar-item plugin-remotely-secure") {
+            if ((node as Element).className === "status-bar-item plugin-another-obsidian-sync") {
               byPlugin = true;
             }
           })

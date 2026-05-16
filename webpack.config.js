@@ -10,6 +10,7 @@ const DEFAULT_ONEDRIVE_AUTHORITY = process.env.ONEDRIVE_AUTHORITY || "";
 module.exports = {
   entry: "./src/main.ts",
   target: "web",
+  devtool: "inline-source-map",
   output: {
     filename: "main.js",
     path: __dirname,
@@ -59,6 +60,7 @@ module.exports = {
     },
     alias: {
       "@azure/msal-node": path.resolve(__dirname, "node_modules/@azure/msal-node/lib/msal-node.cjs"),
+      "nanoid": path.resolve(__dirname, "node_modules/nanoid/index.cjs"),
     },
     mainFields: ["browser", "module", "main"],
     fallback: {

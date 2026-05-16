@@ -1,5 +1,6 @@
-// p-queue is ESM-only; use lazy dynamic import at call sites
-type PQueue = import("p-queue").default;
+import PQueueModule from "p-queue";
+// webpack handles ESM interop; handle both default and module-object forms
+const PQueueCtor: typeof PQueueModule = (PQueueModule as any).default ?? PQueueModule;
 
 // XRegExp is ESM-only; lazy-load it synchronously from cache or fall back to native RegExp
 let _XRegExpCache: ((pattern: string, flags?: string) => RegExp) | undefined;
@@ -375,7 +376,7 @@ export const getSkipItemsByList = (
       result.push(key);
     }
   }
-  console.debug(`finalIsIgnored list= ${JSON.stringify(result)}`);
+  log.debug(`[syncV3] finalIsIgnored list= ${JSON.stringify(result)}`);
   return result;
 };
 
@@ -1761,7 +1762,7 @@ export const doActualSync = async (
 ) => {
   profiler?.addIndent();
   profiler?.insert("doActualSync: enter");
-  console.debug(`concurrency === ${concurrency}`);
+  log.debug(`[syncV3] concurrency=${concurrency}`);
   const {
     onlyMarkSyncedOps,
     folderCreationOps,
@@ -1775,9 +1776,7 @@ export const doActualSync = async (
   // console.debug(`folderCreationOps: ${JSON.stringify(folderCreationOps)}`);
   // console.debug(`deletionOps: ${JSON.stringify(deletionOps)}`);
   // console.debug(`uploadDownloads: ${JSON.stringify(uploadDownloads)}`);
-  console.debug(`allFilesCount: ${allFilesCount}`);
-  console.debug(`realModifyDeleteCount: ${realModifyDeleteCount}`);
-  console.debug(`realTotalCount: ${realTotalCount}`);
+  log.debug(`[syncV3] allFilesCount=${allFilesCount} realModifyDeleteCount=${realModifyDeleteCount} realTotalCount=${realTotalCount}`);
   profiler?.insert("doActualSync: finish splitting steps");
 
   profiler?.insertSize(
@@ -1790,7 +1789,7 @@ export const doActualSync = async (
   );
   profiler?.insertSize("doActualSync: sizeof realTotalCount", deletionOps);
 
-  console.debug(`protectModifyPercentage: ${protectModifyPercentage}`);
+  log.debug(`[syncV3] protectModifyPercentage=${protectModifyPercentage}`);
 
   if (
     protectModifyPercentage >= 0 &&
@@ -1836,7 +1835,7 @@ export const doActualSync = async (
   for (let i = 0; i < nested.length; ++i) {
     profiler?.addIndent();
     profiler?.insert(`doActualSync: step ${i} start`);
-    console.debug(logTexts[i]);
+    log.debug(`[syncV3] ${logTexts[i]}`);
 
     const operations = nested[i];
     // console.debug(`curr operations=${JSON.stringify(operations, null, 2)}`);
@@ -1850,7 +1849,6 @@ export const doActualSync = async (
         continue;
       }
 
-      const { default: PQueueCtor } = await import("p-queue");
       const queue = new PQueueCtor({ concurrency: concurrency, autoStart: true });
       const potentialErrors: Error[] = [];
       let tooManyErrors = false;
@@ -1935,7 +1933,8 @@ export const doActualSync = async (
       deleteCount++;
     }
   }
-  log.debug(`[syncV3] sync complete: total=${totalCount} uploaded=${uploadCount} downloaded=${downloadCount} deleted=${deleteCount}`);
+  log.debug(`[syncV3] sync complete: total=${totalCount} uploaded=${uploadCount} downloaded=${downloadCount} deleted=${deleteCount} ok=${everythingOk}`);
+  return { totalCount, uploadCount, downloadCount, deleteCount, everythingOk };
 };
 
 export type SyncStatusType =
@@ -1979,7 +1978,7 @@ export async function syncer(
   callbackSyncProcess?: any,
   synthesizedConfigDirDeletions?: Entity[]
 ) {
-  console.info(`starting sync.`);
+  log.debug("[syncV3] starting sync");
   log.debug(`[syncV3] step: start`);
   markIsSyncingFunc(true);
 
@@ -2089,8 +2088,7 @@ export async function syncer(
       triggerSource,
       configDir
     );
-    console.debug(`mixedEntityMappings:`);
-    console.debug(mixedEntityMappings); // for debugging
+    log.debug(`[syncV3] mixedEntityMappings:`, mixedEntityMappings);
     profiler?.insert("finish building full sync plan");
 
     await insertSyncPlanRecordByVault(
@@ -2153,6 +2151,6 @@ export async function syncer(
   await ribboonFunc?.(triggerSource, step);
   await statusBarFunc?.(triggerSource, step, everythingOk);
 
-  console.info(`ending sync.`);
+  log.debug(`[syncV3] ending sync`);
   markIsSyncingFunc(false);
 }
