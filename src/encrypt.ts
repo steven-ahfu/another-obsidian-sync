@@ -147,26 +147,23 @@ export const decryptBase64urlToString = async (
   );
 };
 
+// AES-GCM layout: salt(16) + iv(12) + ciphertext(n) + tag(16) = n + 44
+const ENC_OVERHEAD = 44;
+
 export const getSizeFromOrigToEnc = (x: number) => {
   if (x < 0 || Number.isNaN(x) || !Number.isInteger(x)) {
     throw Error(`getSizeFromOrigToEnc: x=${x} is not a valid size`);
   }
-  // plaintext size + salt + GCM authN tag + IV
-  return x + 16 + 16 + 12;
+  return x + ENC_OVERHEAD;
 };
 
-// This is only used in tests, but should be fixed.
 export const getSizeFromEncToOrig = (x: number) => {
-  if (x < 32 || Number.isNaN(x) || !Number.isInteger(x)) {
+  if (x < ENC_OVERHEAD || Number.isNaN(x) || !Number.isInteger(x)) {
     throw Error(`getSizeFromEncToOrig: ${x} is not a valid size`);
   }
-  if (x % 16 !== 0) {
-    throw Error(
-      `getSizeFromEncToOrig: ${x} is not a valid encrypted file size`
-    );
-  }
+  const origSize = x - ENC_OVERHEAD;
   return {
-    minSize: ((x - 16) / 16 - 1) * 16,
-    maxSize: ((x - 16) / 16 - 1) * 16 + 15,
+    minSize: origSize,
+    maxSize: origSize,
   };
 };

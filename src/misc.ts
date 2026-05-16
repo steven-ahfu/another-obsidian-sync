@@ -22,6 +22,7 @@ export const isHiddenPath = (
   if (!(dot || underscore)) {
     throw Error("parameter error for isHiddenPath");
   }
+  if (item === "") return false;
   const k = normalizePath(item); // TODO: only unix path now
   const k2 = k.split("/"); // TODO: only unix path now
   // log.info(k2)
@@ -71,24 +72,19 @@ export const normalizePath = (
 }
 
 export const dirname = (path: string) => {
-  // Normalize the path to use forward slashes
-  path = path.replace(/\\/g, '/');
+  // Normalize slashes and strip trailing slash so folders behave like files
+  path = path.replace(/\\/g, '/').replace(/\/+$/, '');
 
-  // Split the path into parts using forward slash as the separator
   const parts = path.split('/');
-
-  // Remove the last part (file or directory name)
   parts.pop();
 
-  // Join the remaining parts to get the dirname
-  const dirname = parts.join('/');
+  const result = parts.join('/');
 
-  // Handle the case where the path was empty or only contained a root slash
-  if (dirname === '' || dirname === '/' || dirname === '.') {
+  if (result === '' || result === '.' ) {
     return '/';
   }
 
-  return dirname;
+  return result;
 }
 
 /**

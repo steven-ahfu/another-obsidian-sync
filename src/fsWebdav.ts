@@ -39,7 +39,7 @@ function objKeyToLower(obj: Record<string, string>) {
 }
 
 // @ts-ignore
-import { getPatcher } from "webdav/dist/web/index.js";
+import { getPatcher } from "webdav/dist/web/webdav.js";
 if (VALID_REQURL) {
   getPatcher().patch(
     "request",
@@ -141,7 +141,7 @@ if (VALID_REQURL) {
 
 // @ts-ignore
 // biome-ignore lint: we want to ts-ignore the next line
-import { AuthType, BufferLike, createClient } from "webdav/dist/web/index.js";
+import { AuthType, BufferLike, createClient } from "webdav/dist/web/webdav.js";
 
 export const DEFAULT_WEBDAV_CONFIG = {
   address: "",

@@ -47,32 +47,28 @@ describe("Encryption tests", () => {
   });
 
   it("should get size from origin to encrypted correctly", () => {
+    // AES-GCM layout: salt(16) + iv(12) + ciphertext(n) + tag(16) = n + 44
     expect(() => getSizeFromOrigToEnc(-1)).to.throw();
     expect(() => getSizeFromOrigToEnc(0.5)).to.throw();
-    expect(getSizeFromOrigToEnc(0)).equals(32);
-    expect(getSizeFromOrigToEnc(15)).equals(32);
-    expect(getSizeFromOrigToEnc(16)).equals(48);
-    expect(getSizeFromOrigToEnc(31)).equals(48);
-    expect(getSizeFromOrigToEnc(32)).equals(64);
-    expect(getSizeFromOrigToEnc(14787203)).equals(14787232);
+    expect(getSizeFromOrigToEnc(0)).equals(44);
+    expect(getSizeFromOrigToEnc(1)).equals(45);
+    expect(getSizeFromOrigToEnc(14787203)).equals(14787247);
   });
 
   it("should get size from encrypted to origin correctly", () => {
     expect(() => getSizeFromEncToOrig(-1)).to.throw();
-    expect(() => getSizeFromEncToOrig(30)).to.throw();
+    expect(() => getSizeFromEncToOrig(43)).to.throw();
 
-    expect(getSizeFromEncToOrig(32)).to.deep.equal({
+    expect(getSizeFromEncToOrig(44)).to.deep.equal({
       minSize: 0,
-      maxSize: 15,
+      maxSize: 0,
     });
-    expect(getSizeFromEncToOrig(48)).to.deep.equal({
-      minSize: 16,
-      maxSize: 31,
+    expect(getSizeFromEncToOrig(45)).to.deep.equal({
+      minSize: 1,
+      maxSize: 1,
     });
 
-    expect(() => getSizeFromEncToOrig(14787231)).to.throw();
-
-    let { minSize, maxSize } = getSizeFromEncToOrig(14787232);
+    let { minSize, maxSize } = getSizeFromEncToOrig(14787247);
     expect(minSize <= 14787203 && 14787203 <= maxSize).to.be.true;
   });
 });

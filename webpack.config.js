@@ -43,8 +43,8 @@ module.exports = {
       },
       {
         test: /\.tsx?$/,
-        use: "ts-loader",
-        exclude: /node_modules/,
+        use: { loader: "ts-loader", options: { transpileOnly: true } },
+        exclude: /node_modules\/(?!@protontech\/crypto)/,
       },
       {
         test: /\.svg?$/,
@@ -54,6 +54,12 @@ module.exports = {
   },
   resolve: {
     extensions: [".tsx", ".ts", ".js"],
+    extensionAlias: {
+      ".ts": [".ts", ".js"],
+    },
+    alias: {
+      "@azure/msal-node": path.resolve(__dirname, "node_modules/@azure/msal-node/lib/msal-node.cjs"),
+    },
     mainFields: ["browser", "module", "main"],
     fallback: {
       // assert: require.resolve("assert"),
@@ -64,8 +70,9 @@ module.exports = {
       // crypto: false,
       // domain: require.resolve("domain-browser"),
       // events: require.resolve("events"),
-      // http: require.resolve("stream-http"),
-      // https: require.resolve("https-browserify"),
+      fs: false,
+      http: false,
+      https: false,
       net: false,
       // os: require.resolve("os-browserify/browser"),
       path: require.resolve("path-browserify"),

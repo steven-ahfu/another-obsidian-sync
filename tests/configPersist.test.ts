@@ -20,6 +20,15 @@ const DEFAULT_SETTINGS: RemotelySavePluginSettings = {
   onedrive: {
     username: "test 🍎 emoji",
   } as any,
+  protondrive: {
+    username: "",
+    uid: "",
+    accessToken: "",
+    refreshToken: "",
+    accessTokenExpiresAt: 0,
+    keyPassword: "",
+    remoteBaseDir: "",
+  },
   password: "password",
   serviceType: "s3",
   enableStatusBarInfo: true,
