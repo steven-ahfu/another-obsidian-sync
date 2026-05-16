@@ -10,6 +10,7 @@ const DEFAULT_ONEDRIVE_AUTHORITY = process.env.ONEDRIVE_AUTHORITY || "";
 module.exports = {
   entry: "./src/main.ts",
   target: "web",
+  devtool: "inline-source-map",
   output: {
     filename: "main.js",
     path: __dirname,

@@ -48,6 +48,8 @@ import {
 } from "./fsOnedrive";
 import { DEFAULT_S3_CONFIG, FakeFsS3 } from "./fsS3";
 import { DEFAULT_WEBDAV_CONFIG, FakeFsWebdav } from "./fsWebdav";
+import { DEFAULT_PROTONDRIVE_CONFIG, FakeFsProtondrive } from "./fsProtondrive";
+import { protonLogin, protonLogout } from "./authProton";
 import { messyConfigToNormal } from "./configPersist";
 import type { TransItemType } from "./i18n";
 import { checkHasSpecialCharForDir } from "./misc";
@@ -1201,6 +1203,185 @@ export class RemotelySaveSettingTab extends PluginSettingTab {
       });
 
     //////////////////////////////////////////////////
+    // below for proton drive
+    //////////////////////////////////////////////////
+
+    const protondriveDiv = containerEl.createEl("div", {
+      cls: "protondrive-hide",
+    });
+    protondriveDiv.toggleClass(
+      "protondrive-hide",
+      this.plugin.settings.serviceType !== "protondrive"
+    );
+    protondriveDiv.createEl("h2", { text: t("settings_protondrive") });
+
+    const protondriveLongDescDiv = protondriveDiv.createEl("div", {
+      cls: "settings-long-desc",
+    });
+    for (const c of [
+      t("settings_protondrive_disclaimer1"),
+      t("settings_protondrive_disclaimer2"),
+    ]) {
+      protondriveLongDescDiv.createEl("p", { text: c });
+    }
+
+    // Status indicator
+    const protondriveStatusEl = protondriveLongDescDiv.createEl("p");
+    const updateProtonStatus = () => {
+      const username = this.plugin.settings.protondrive.username;
+      const hasToken = !!this.plugin.settings.protondrive.accessToken;
+      protondriveStatusEl.setText(
+        hasToken && username
+          ? t("settings_protondrive_status_authed", { username })
+          : t("settings_protondrive_status_not_authed")
+      );
+    };
+    updateProtonStatus();
+
+    // Username field
+    new Setting(protondriveDiv)
+      .setName(t("settings_protondrive_username"))
+      .setDesc(t("settings_protondrive_username_desc"))
+      .addText((text) =>
+        text
+          .setPlaceholder("user@proton.me")
+          .setValue(this.plugin.settings.protondrive.username)
+          .onChange(async (value) => {
+            this.plugin.settings.protondrive.username = value.trim();
+            await this.plugin.saveSettings();
+          })
+      );
+
+    // Password field (never stored)
+    let protonPasswordInput = "";
+    new Setting(protondriveDiv)
+      .setName(t("settings_protondrive_password"))
+      .setDesc(t("settings_protondrive_password_desc"))
+      .addText((text) => {
+        text.inputEl.type = "password";
+        text
+          .setPlaceholder("")
+          .onChange((value) => {
+            protonPasswordInput = value;
+          });
+      });
+
+    // TOTP field (optional)
+    let protonTotpInput = "";
+    new Setting(protondriveDiv)
+      .setName(t("settings_protondrive_totp"))
+      .setDesc(t("settings_protondrive_totp_desc"))
+      .addText((text) =>
+        text
+          .setPlaceholder("123456")
+          .onChange((value) => {
+            protonTotpInput = value.trim();
+          })
+      );
+
+    // Login button
+    new Setting(protondriveDiv)
+      .setName(t("settings_protondrive_login"))
+      .setDesc(t("settings_protondrive_login_desc"))
+      .addButton((button) => {
+        button.setButtonText(t("settings_protondrive_login_button"));
+        button.onClick(async () => {
+          try {
+            const username = this.plugin.settings.protondrive.username;
+            const result = await protonLogin(
+              username,
+              protonPasswordInput,
+              protonTotpInput || undefined
+            );
+            this.plugin.settings.protondrive.uid = result.uid;
+            this.plugin.settings.protondrive.accessToken = result.accessToken;
+            this.plugin.settings.protondrive.refreshToken = result.refreshToken;
+            this.plugin.settings.protondrive.accessTokenExpiresAt = result.expiresAt;
+            this.plugin.settings.protondrive.keyPassword = result.keyPassword;
+            await this.plugin.saveSettings();
+            updateProtonStatus();
+            new Notice(
+              t("settings_protondrive_login_succ", { username })
+            );
+          } catch (err: any) {
+            console.error(err);
+            new Notice(t("settings_protondrive_login_fail"));
+            new Notice(`${err?.message ?? err}`);
+          }
+        });
+      });
+
+    // Logout button
+    new Setting(protondriveDiv)
+      .setName(t("settings_protondrive_logout"))
+      .setDesc(t("settings_protondrive_logout_desc"))
+      .addButton((button) => {
+        button.setButtonText(t("settings_protondrive_logout_button"));
+        button.onClick(async () => {
+          try {
+            if (this.plugin.settings.protondrive.accessToken) {
+              await protonLogout({
+                uid: this.plugin.settings.protondrive.uid,
+                accessToken: this.plugin.settings.protondrive.accessToken,
+                refreshToken: this.plugin.settings.protondrive.refreshToken,
+                expiresAt: this.plugin.settings.protondrive.accessTokenExpiresAt,
+                keyPassword: this.plugin.settings.protondrive.keyPassword,
+              });
+            }
+          } catch (_) {
+            // best-effort logout
+          }
+          this.plugin.settings.protondrive = JSON.parse(
+            JSON.stringify(DEFAULT_PROTONDRIVE_CONFIG)
+          );
+          await this.plugin.saveSettings();
+          updateProtonStatus();
+          new Notice(t("settings_protondrive_logout_notice"));
+        });
+      });
+
+    // Remote base directory
+    let newProtonRemoteBaseDir =
+      this.plugin.settings.protondrive.remoteBaseDir || "";
+    new Setting(protondriveDiv)
+      .setName(t("settings_protondrive_remote_base_dir"))
+      .setDesc(t("settings_protondrive_remote_base_dir_desc"))
+      .addText((text) =>
+        text
+          .setPlaceholder(this.app.vault.getName())
+          .setValue(newProtonRemoteBaseDir)
+          .onChange(async (value) => {
+            newProtonRemoteBaseDir = value.trim();
+            this.plugin.settings.protondrive.remoteBaseDir =
+              newProtonRemoteBaseDir || this.app.vault.getName();
+            await this.plugin.saveSettings();
+          })
+      );
+
+    // Check connectivity
+    new Setting(protondriveDiv)
+      .setName(t("settings_checkonnectivity"))
+      .setDesc(t("settings_checkonnectivity_desc"))
+      .addButton(async (button) => {
+        button.setButtonText(t("settings_checkonnectivity_button"));
+        button.onClick(async () => {
+          new Notice(t("settings_checkonnectivity_checking"));
+          const self = this;
+          try {
+            const client = new FakeFsProtondrive(
+              this.plugin.settings.protondrive,
+              () => self.plugin.saveSettings()
+            );
+            await client.walkPartial();
+            new Notice(t("settings_protondrive_connect_succ"));
+          } catch (err: any) {
+            new Notice(t("settings_protondrive_connect_fail"));
+            new Notice(`${err?.message ?? err}`);
+          }
+        });
+      });
+
+    //////////////////////////////////////////////////
     // below for webdav
     //////////////////////////////////////////////////
 
@@ -1432,6 +1613,7 @@ export class RemotelySaveSettingTab extends PluginSettingTab {
         dropdown.addOption("dropbox", t("settings_chooseservice_dropbox"));
         dropdown.addOption("webdav", t("settings_chooseservice_webdav"));
         dropdown.addOption("onedrive", t("settings_chooseservice_onedrive"));
+        dropdown.addOption("protondrive", t("settings_chooseservice_protondrive"));
         dropdown
           .setValue(this.plugin.settings.serviceType)
           .onChange(async (val: SUPPORTED_SERVICES_TYPE) => {
@@ -1451,6 +1633,10 @@ export class RemotelySaveSettingTab extends PluginSettingTab {
             webdavDiv.toggleClass(
               "webdav-hide",
               this.plugin.settings.serviceType !== "webdav"
+            );
+            protondriveDiv.toggleClass(
+              "protondrive-hide",
+              this.plugin.settings.serviceType !== "protondrive"
             );
             await this.plugin.saveSettings();
           });

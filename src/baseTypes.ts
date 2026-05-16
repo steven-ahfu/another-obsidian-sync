@@ -18,7 +18,7 @@ export const ONEDRIVE_AUTHORITY = global.DEFAULT_ONEDRIVE_AUTHORITY;
 
 export const DEFAULT_CONTENT_TYPE = "application/octet-stream";
 
-export type SUPPORTED_SERVICES_TYPE = "s3" | "webdav" | "dropbox" | "onedrive";
+export type SUPPORTED_SERVICES_TYPE = "s3" | "webdav" | "dropbox" | "onedrive" | "protondrive";
 
 export type SUPPORTED_SERVICES_TYPE_WITH_REMOTE_BASE_DIR =
   | "webdav"
@@ -88,11 +88,25 @@ export interface OnedriveConfig {
   kind?: "onedrive";
 }
 
+export interface ProtondriveConfig {
+  username: string;
+  // password never stored — only derived session tokens and key material
+  uid: string;
+  accessToken: string;
+  refreshToken: string;
+  accessTokenExpiresAt: number; // epoch ms
+  // Derived key password (bcrypt+SHA-512 of login password + KeySalt).
+  // Not the raw password — equivalent in sensitivity to an access token.
+  keyPassword: string;
+  remoteBaseDir: string;
+}
+
 export interface RemotelySavePluginSettings {
   s3: S3Config;
   webdav: WebdavConfig;
   dropbox: DropboxConfig;
   onedrive: OnedriveConfig;
+  protondrive: ProtondriveConfig;
   password: string;
   serviceType: SUPPORTED_SERVICES_TYPE;
   debugEnabled?: boolean;
@@ -317,4 +331,4 @@ export interface MixedEntity {
   sideNotes?: any;
 }
 
-export type SUPPORTED_SERVICES_TYPE_V3 = "s3" | "webdav" | "dropbox" | "onedrive";
+export type SUPPORTED_SERVICES_TYPE_V3 = "s3" | "webdav" | "dropbox" | "onedrive" | "protondrive";

@@ -49,6 +49,7 @@ import {
 } from "./fsOnedrive";
 import { DEFAULT_S3_CONFIG } from "./fsS3";
 import { DEFAULT_WEBDAV_CONFIG } from "./fsWebdav";
+import { DEFAULT_PROTONDRIVE_CONFIG } from "./fsProtondrive";
 import { RemotelySaveSettingTab } from "./settings";
 import { messyConfigToNormal, normalConfigToMessy } from "./configPersist";
 import { ObsConfigDirFileType, listFilesInObsFolder } from "./obsFolderLister";
@@ -85,6 +86,7 @@ const DEFAULT_SETTINGS: RemotelySavePluginSettings = {
   webdav: DEFAULT_WEBDAV_CONFIG,
   dropbox: DEFAULT_DROPBOX_CONFIG,
   onedrive: DEFAULT_ONEDRIVE_CONFIG,
+  protondrive: DEFAULT_PROTONDRIVE_CONFIG,
   password: "",
   serviceType: "s3",
   debugEnabled: false,

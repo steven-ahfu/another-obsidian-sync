@@ -255,7 +255,11 @@ const getObjectBodyToArrayBuffer = async (
       const chunks: Uint8Array[] = [];
       b.on("data", (chunk) => chunks.push(chunk));
       b.on("error", reject);
-      b.on("end", () => resolve(bufferToArrayBuffer(Buffer.concat(chunks))));
+      b.on("end", () => {
+          const merged = Buffer.concat(chunks);
+          const ab = merged.buffer.slice(merged.byteOffset, merged.byteOffset + merged.byteLength) as ArrayBuffer;
+          resolve(ab);
+        });
     })) as ArrayBuffer;
   } else if (b instanceof ReadableStream) {
     return await new Response(b, {}).arrayBuffer();
