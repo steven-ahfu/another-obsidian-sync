@@ -9,6 +9,7 @@ import {
 } from "obsidian";
 import cloneDeep from "lodash/cloneDeep";
 import type {
+  Entity,
   RemotelySavePluginSettings,
   SyncTriggerSourceType,
 } from "./baseTypes";
@@ -66,6 +67,19 @@ import {
 } from "./debugMode";
 import { SizesConflictModal } from "./syncSizesConflictNotice";
 import {mkdirpInVault, getLastSynced} from "./misc";
+import {
+  isConfigDirSnapshotMetaCompatible,
+  buildConfigDirSnapshotRecords,
+  synthesizeDeletedConfigDirEntities,
+  type ConfigDirSnapshotScope,
+} from "./configDirSnapshot";
+import {
+  loadConfigDirSnapshotByVault,
+  getConfigDirSnapshotMetaByVault,
+  replaceConfigDirSnapshotByVault,
+  type ConfigDirSnapshotRecord,
+  type ConfigDirSnapshotMetaRecord,
+} from "./localdb";
 
 const DEFAULT_SETTINGS: RemotelySavePluginSettings = {
   s3: DEFAULT_S3_CONFIG,
@@ -167,6 +181,18 @@ export default class RemotelySavePlugin extends Plugin {
         syncUnderscoreItems: this.settings.syncUnderscoreItems ?? false,
       });
 
+      const localConfigDirContents = this.shouldTrackConfigDirSnapshot()
+        ? await listFilesInObsFolder(
+            this.app.vault,
+            this.manifest.id,
+            this.settings.syncTrash ?? false
+          )
+        : undefined;
+
+      const synthesizedDeletions: Entity[] = localConfigDirContents
+        ? await this.getSynthesizedConfigDirDeletions(localConfigDirContents)
+        : [];
+
       await syncer(
         localFs,
         remoteFs,
@@ -215,8 +241,14 @@ export default class RemotelySavePlugin extends Plugin {
           new Notice(`${msg}\n${error.message}`, 10 * 1000);
           this.updateSyncStatus("idle");
           this.setSyncIcon(false);
-        }
+        },
+        undefined, // callbackSyncProcess
+        synthesizedDeletions
       );
+
+      if (triggerSource !== "dry") {
+        await this.saveConfigDirSnapshot(localConfigDirContents);
+      }
     } catch (e) {
       log.error("[main] syncRun error:", e);
       new Notice(`Sync failed: ${(e as any)?.message ?? String(e)}`);
@@ -230,6 +262,80 @@ export default class RemotelySavePlugin extends Plugin {
       // when syncing to a device which never trashed a file we will error if this folder does not exist
       await this.createTrashFolderIfDoesNotExist(this.app.vault);
     }
+  }
+
+  private shouldTrackConfigDirSnapshot(): boolean {
+    return !!(
+      this.settings.syncConfigDir ||
+      this.settings.syncTrash ||
+      this.settings.syncBookmarks
+    );
+  }
+
+  private getConfigDirSnapshotScope(): ConfigDirSnapshotScope {
+    return {
+      configDir: this.app.vault.configDir,
+      syncConfigDir: this.settings.syncConfigDir ?? false,
+      syncTrash: this.settings.syncTrash ?? false,
+      syncBookmarks: this.settings.syncBookmarks ?? false,
+    };
+  }
+
+  private isTrackedConfigDirKey(key: string): boolean {
+    const configDir = this.app.vault.configDir;
+    if (key === configDir || key.startsWith(`${configDir}/`)) return true;
+    if (this.settings.syncTrash && (key === ".trash" || key === ".trash/" || key.startsWith(".trash/"))) return true;
+    return false;
+  }
+
+  private async getSynthesizedConfigDirDeletions(
+    localConfigDirContents: ObsConfigDirFileType[]
+  ): Promise<Entity[]> {
+    if (!this.shouldTrackConfigDirSnapshot()) return [];
+
+    const scope = this.getConfigDirSnapshotScope();
+    const snapshotMeta = await getConfigDirSnapshotMetaByVault(this.db, this.vaultRandomID);
+
+    if (!isConfigDirSnapshotMetaCompatible(snapshotMeta, scope)) return [];
+
+    const snapshot = await loadConfigDirSnapshotByVault(this.db, this.vaultRandomID);
+    if (snapshot.length === 0) return [];
+
+    return synthesizeDeletedConfigDirEntities(
+      snapshot,
+      localConfigDirContents,
+      [], // syncer will deduplicate against real prevSyncEntityList
+      (key) => this.isTrackedConfigDirKey(key)
+    );
+  }
+
+  private async saveConfigDirSnapshot(
+    localConfigDirContents?: ObsConfigDirFileType[]
+  ): Promise<void> {
+    if (!this.shouldTrackConfigDirSnapshot()) return;
+
+    const contents =
+      localConfigDirContents ??
+      (await listFilesInObsFolder(
+        this.app.vault,
+        this.manifest.id,
+        this.settings.syncTrash ?? false
+      ));
+
+    const scope = this.getConfigDirSnapshotScope();
+    const records = buildConfigDirSnapshotRecords(
+      contents,
+      (key) => this.isTrackedConfigDirKey(key),
+      this.vaultRandomID
+    );
+
+    const meta: ConfigDirSnapshotMetaRecord = {
+      ...scope,
+      capturedAt: Date.now(),
+      vaultRandomID: this.vaultRandomID,
+    };
+
+    await replaceConfigDirSnapshotByVault(this.db, records, meta, this.vaultRandomID);
   }
 
   private updateSyncStatus(status: SyncStatusType) {

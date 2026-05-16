@@ -1976,7 +1976,8 @@ export async function syncer(
     step: number,
     everythingOk: boolean
   ) => any,
-  callbackSyncProcess?: any
+  callbackSyncProcess?: any,
+  synthesizedConfigDirDeletions?: Entity[]
 ) {
   console.info(`starting sync.`);
   log.debug(`[syncV3] step: start`);
@@ -2046,6 +2047,17 @@ export async function syncer(
     // console.debug(prevSyncEntityList);
     profiler?.insert(`finish step${step} (prev sync)`);
 
+    // Inject synthesized deletions from config-dir snapshot if provided
+    const effectivePrevSyncEntityList =
+      synthesizedConfigDirDeletions && synthesizedConfigDirDeletions.length > 0
+        ? [
+            ...prevSyncEntityList,
+            ...synthesizedConfigDirDeletions.filter(
+              (s) => !prevSyncEntityList.some((p) => p.key === s.key)
+            ),
+          ]
+        : prevSyncEntityList;
+
     step = 6;
     log.debug(`[syncV3] step: ${step} (ensemble mixed entities + sync plan)`);
     await notifyFunc?.(triggerSource, step);
@@ -2053,7 +2065,7 @@ export async function syncer(
     await statusBarFunc?.(triggerSource, step, everythingOk);
     let mixedEntityMappings = await ensembleMixedEnties(
       localEntityList,
-      prevSyncEntityList,
+      effectivePrevSyncEntityList,
       remoteEntityList,
       settings.syncConfigDir ?? false,
       settings.syncBookmarks ?? false,

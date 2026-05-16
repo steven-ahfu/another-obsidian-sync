@@ -21,6 +21,22 @@ export const DEFAULT_TBL_SYNC_MAPPING = "syncmetadatahistory";
 export const DEFAULT_SYNC_PLANS_HISTORY = "syncplanshistory";
 export const DEFAULT_TBL_VAULT_RANDOM_ID_MAPPING = "vaultrandomidmapping";
 export const DEFAULT_TBL_LOGGER_OUTPUT = "loggeroutput";
+export const DEFAULT_TBL_CONFIG_DIR_SNAPSHOT = "configdirsnapshot";
+
+export interface ConfigDirSnapshotRecord {
+  key: string;
+  keyType: "folder" | "file";
+  vaultRandomID: string;
+}
+
+export interface ConfigDirSnapshotMetaRecord {
+  configDir: string;
+  syncConfigDir: boolean;
+  syncTrash: boolean;
+  syncBookmarks: boolean;
+  capturedAt: number;
+  vaultRandomID: string;
+}
 
 export interface FileFolderHistoryRecord {
   key: string;
@@ -63,6 +79,7 @@ export interface InternalDBs {
   loggerOutputTbl: LocalForage;
   prevSyncRecordsTbl: LocalForage;
   fileContentHistoryTbl: LocalForage;
+  configDirSnapshotTbl: LocalForage;
 }
 
 /**
@@ -219,6 +236,10 @@ export const prepareDBs = async (
     fileContentHistoryTbl: localforage.createInstance({
       name: "remotelysync",
       storeName: "fileContentHistory",
+    }),
+    configDirSnapshotTbl: localforage.createInstance({
+      name: "remotelysync",
+      storeName: "configDirSnapshot",
     }),
   } as InternalDBs;
 
@@ -753,4 +774,51 @@ export const insertProfilerResultByVault = async (
 ): Promise<void> => {
   const key = `${vaultRandomID}\t${remoteType}\t${Date.now()}`;
   await db.syncPlansTbl.setItem(key, result);
+};
+
+export const loadConfigDirSnapshotByVault = async (
+  db: InternalDBs,
+  vaultRandomID: string
+): Promise<ConfigDirSnapshotRecord[]> => {
+  const records: ConfigDirSnapshotRecord[] = [];
+  await db.configDirSnapshotTbl.iterate((value, key) => {
+    if (key.startsWith(`${vaultRandomID}\trecord\t`)) {
+      records.push(value as ConfigDirSnapshotRecord);
+    }
+  });
+  return records;
+};
+
+export const getConfigDirSnapshotMetaByVault = async (
+  db: InternalDBs,
+  vaultRandomID: string
+): Promise<ConfigDirSnapshotMetaRecord | undefined> => {
+  const item = await db.configDirSnapshotTbl.getItem<ConfigDirSnapshotMetaRecord>(
+    `${vaultRandomID}\tmeta`
+  );
+  return item ?? undefined;
+};
+
+export const replaceConfigDirSnapshotByVault = async (
+  db: InternalDBs,
+  records: ConfigDirSnapshotRecord[],
+  meta: ConfigDirSnapshotMetaRecord,
+  vaultRandomID: string
+): Promise<void> => {
+  // Remove old records and meta
+  const keysToDelete: string[] = [];
+  await db.configDirSnapshotTbl.iterate((_value, key) => {
+    if (key.startsWith(`${vaultRandomID}\t`)) {
+      keysToDelete.push(key);
+    }
+  });
+  await Promise.all(keysToDelete.map((k) => db.configDirSnapshotTbl.removeItem(k)));
+
+  // Write new
+  await db.configDirSnapshotTbl.setItem(`${vaultRandomID}\tmeta`, meta);
+  await Promise.all(
+    records.map((r) =>
+      db.configDirSnapshotTbl.setItem(`${vaultRandomID}\trecord\t${r.key}`, r)
+    )
+  );
 };
