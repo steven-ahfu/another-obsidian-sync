@@ -20,7 +20,10 @@
   },
   "source": "main.ts",
   "keywords": [],
-  "author": "",
+  "author": "steven-ahfu (https://github.com/steven-ahfu)",
+  "contributors": [
+    "sboesen (https://github.com/sboesen)"
+  ],
   "license": "Apache-2.0",
   "devDependencies": {
     "@microsoft/microsoft-graph-types": "^2.19.0",
