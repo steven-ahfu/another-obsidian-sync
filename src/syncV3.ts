@@ -1758,7 +1758,8 @@ export const doActualSync = async (
   profiler: Profiler | undefined,
   conflictAction: ConflictActionType,
   triggerSource: SyncTriggerSourceType,
-  callbackSyncProcess?: any
+  callbackSyncProcess?: any,
+  isFreshDevice?: boolean
 ) => {
   profiler?.addIndent();
   profiler?.insert("doActualSync: enter");
@@ -1792,6 +1793,7 @@ export const doActualSync = async (
   log.debug(`[syncV3] protectModifyPercentage=${protectModifyPercentage}`);
 
   if (
+    !isFreshDevice &&
     protectModifyPercentage >= 0 &&
     realModifyDeleteCount >= 0 &&
     allFilesCount > 0
@@ -2069,7 +2071,7 @@ export async function syncer(
       settings.syncConfigDir ?? false,
       settings.syncBookmarks ?? false,
       configDir,
-      settings.syncUnderscoreItems ?? false,
+      true, // syncUnderscoreItems removed; use ignorePaths regex (e.g. ^_.*) instead
       settings.ignorePaths ?? [],
       settings.onlyAllowPaths ?? [],
       fsEncrypt,
@@ -2122,7 +2124,8 @@ export async function syncer(
         profiler,
         settings.conflictAction ?? "keep_newer",
         triggerSource,
-        callbackSyncProcess
+        callbackSyncProcess,
+        prevSyncEntityList.length === 0
       );
       profiler?.insert(`finish step${step} (actual sync)`);
     } else {
@@ -2153,4 +2156,5 @@ export async function syncer(
 
   log.debug(`[syncV3] ending sync`);
   markIsSyncingFunc(false);
+  return { everythingOk };
 }

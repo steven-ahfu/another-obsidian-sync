@@ -45,7 +45,7 @@ module.exports = {
       {
         test: /\.tsx?$/,
         use: { loader: "ts-loader", options: { transpileOnly: true } },
-        exclude: /node_modules\/(?!@protontech\/crypto)/,
+        exclude: /node_modules\/(?!(@protontech\/crypto|\.pnpm\/@protontech\+crypto))/,
       },
       {
         test: /\.svg?$/,
@@ -99,5 +99,7 @@ module.exports = {
   optimization: {
     minimize: true,
     minimizer: [new TerserPlugin({ extractComments: false })],
+    splitChunks: false,
+    runtimeChunk: false,
   },
 };

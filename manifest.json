@@ -1,9 +1,9 @@
 {
   "id": "another-obsidian-sync",
   "name": "Another Obsidian Sync",
-  "version": "0.6.0",
+  "version": "0.6.1",
   "minAppVersion": "1.4.11",
-  "description": "Security and feature updates for the remotely-save unofficial plugin allowing users to synchronize notes between local device and the cloud service. Not backwards compatible.",
+  "description": "Fork of remotely-sync by sboesen. Security and feature updates for syncing notes to cloud services.",
   "author": "steven-ahfu",
   "authorUrl": "https://github.com/steven-ahfu",
   "isDesktopOnly": false

@@ -35,6 +35,10 @@ esbuild
       "net",
       "http",
       "https",
+      "@protontech/drive-sdk",
+      "@protontech/crypto",
+      "bcryptjs",
+      "js-srp6a",
       // ...builtins
     ],
     inject: ["./esbuild.injecthelper.mjs"],

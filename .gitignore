@@ -9,6 +9,7 @@ package-lock.json
 # build
 main.js
 *.js.map
+[0-9]*.main.js
 
 # obsidian
 data.json
@@ -18,3 +19,5 @@ logs.txt
 
 # hidden files
 .*
+
+.agents/

@@ -1,11 +1,13 @@
 {
   "name": "remotely-sync",
-  "version": "0.6.0",
+  "version": "0.6.1",
   "description": "Security updates for the remotely-save unofficial plugin allowing users to synchronize notes between local device and the cloud service. Not backwards compatible.",
   "scripts": {
     "dev2": "node esbuild.config.mjs",
     "build2": "tsc -noEmit -skipLibCheck && node esbuild.config.mjs production",
     "build": "webpack --mode production",
+    "build:vault": "webpack --mode production && node scripts/deploy-vault.mjs",
+    "deploy:vault": "node scripts/deploy-vault.mjs",
     "dev": "webpack --mode development --watch",
     "format": "npx prettier --write .",
     "clean": "npx rimraf main.js",

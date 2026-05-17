@@ -225,7 +225,7 @@ export const VALID_REQURL =
   (!Platform.isAndroidApp && requireApiVersion(API_VER_REQURL)) ||
   (Platform.isAndroidApp && requireApiVersion(API_VER_REQURL_ANDROID));
 
-export const DEFAULT_DEBUG_FOLDER = "_debug_remotely_save/";
+export const DEFAULT_DEBUG_FOLDER = "_debug_ahfu_sync/";
 export const DEFAULT_SYNC_PLANS_HISTORY_FILE_PREFIX =
   "sync_plans_hist_exported_on_";
 export const DEFAULT_LOG_HISTORY_FILE_PREFIX = "log_hist_exported_on_";
