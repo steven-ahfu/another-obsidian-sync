@@ -98,5 +98,7 @@ module.exports = {
   optimization: {
     minimize: true,
     minimizer: [new TerserPlugin({ extractComments: false })],
+    splitChunks: false,
+    runtimeChunk: false,
   },
 };
