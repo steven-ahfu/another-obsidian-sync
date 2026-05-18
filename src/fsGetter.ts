@@ -2,6 +2,7 @@ import type { RemotelySavePluginSettings } from "./baseTypes";
 import { FakeFs } from "./fsAll";
 import { FakeFsDropbox } from "./fsDropbox";
 import { FakeFsOnedrive } from "./fsOnedrive";
+import { FakeFsS3 } from "./fsS3";
 import { FakeFsWebdav } from "./fsWebdav";
 import { log } from "./moreOnLog";
 
@@ -12,10 +13,7 @@ export const getClient = (
 ): FakeFs => {
   log.debug(`[fsGetter] getClient: serviceType=${settings.serviceType}`);
   if (settings.serviceType === "s3") {
-    // FakeFsS3 not yet ported — will be added in a future task
-    throw new Error(
-      `S3 service type is not yet supported in this build. Please use webdav, dropbox, or onedrive.`
-    );
+    return new FakeFsS3(settings.s3, vaultName, settings.s3.bypassCorsLocally ?? true);
   } else if (settings.serviceType === "webdav") {
     return new FakeFsWebdav(settings.webdav, vaultName, saveUpdatedConfigFunc);
   } else if (settings.serviceType === "dropbox") {

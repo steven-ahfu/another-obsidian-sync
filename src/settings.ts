@@ -701,7 +701,7 @@ class ImportSettingsModal extends Modal {
 
 const wrapTextWithPasswordHide = (text: TextComponent) => {
   const span = createSpan("Hi!");
-  const hider = text.inputEl.insertAdjacentElement("afterend", span) as HTMLElement;
+  const hider = text.inputEl.insertAdjacentElement("beforebegin", span) as HTMLElement;
   // the init type of hider is "hidden" === eyeOff === password
   setIcon(hider, "eye-off");
   hider.addEventListener("click", (e) => {
@@ -1393,7 +1393,7 @@ export class RemotelySaveSettingTab extends PluginSettingTab {
     // below for encryption settings
     //////////////////////////////////////////////////
 
-    const encryptionDiv = containerEl.createEl("div");
+    const encryptionDiv = containerEl.createEl("div", { cls: "encryption-section" });
     encryptionDiv.createEl("h2", { text: t("settings_encryption") });
 
     let newPassword = `${this.plugin.settings.password}`;
@@ -1445,14 +1445,17 @@ export class RemotelySaveSettingTab extends PluginSettingTab {
               this.app.vault.getName(),
               () => this.plugin.saveSettings()
             );
-            await client.checkConnect(
-              (callbackObject: any) => {
-                if (callbackObject.hasOwnProperty("err")) {
-                  new Notice(t("settings_check_conn_fail"));
-                  return;
-                }
+            let connFailed = false;
+            await client.checkConnect((callbackObject: any) => {
+              if (callbackObject.hasOwnProperty("err")) {
+                log.error(`[checkConn] callback err:`, callbackObject.err);
+                connFailed = true;
               }
-            );
+            });
+            if (connFailed) {
+              new Notice(t("settings_check_conn_fail"));
+              return;
+            }
             const password = this.plugin.settings.password ?? "";
             if (password !== "") {
               const encFs = new FakeFsEncrypt(
@@ -1483,7 +1486,8 @@ export class RemotelySaveSettingTab extends PluginSettingTab {
             } else {
               new Notice(t("settings_check_conn_ok"));
             }
-          } catch (e) {
+          } catch (e: any) {
+            log.error(`[checkConn] threw:`, e?.message, e?.stack);
             new Notice(t("settings_check_conn_fail"));
           } finally {
             button.setDisabled(false);
@@ -1540,6 +1544,7 @@ export class RemotelySaveSettingTab extends PluginSettingTab {
 
     new Setting(syncDiv)
       .setName(t("settings_runoncestartup"))
+      .setDesc(t("settings_runoncestartup_desc"))
       .addDropdown((dropdown) => {
         dropdown.addOption("-1", t("settings_runoncestartup_notset"));
         dropdown.addOption(
@@ -1688,6 +1693,32 @@ export class RemotelySaveSettingTab extends PluginSettingTab {
     });
 
     //////////////////////////////////////////////////
+    // below for import and export functions
+    //////////////////////////////////////////////////
+
+    // import and export
+    const importExportDiv = containerEl.createEl("div");
+    importExportDiv.createEl("h2", {
+      text: t("settings_importexport"),
+    });
+
+    new Setting(importExportDiv)
+      .setName(t("settings_importexport_title"))
+      .setDesc(t("settings_importexport_desc"))
+      .addButton((button) => {
+        button.setButtonText(t("settings_export_desc_button"));
+        button.onClick(() => {
+          new ExportSettingsModal(this.app, this.plugin).open();
+        });
+      })
+      .addButton((button) => {
+        button.setButtonText(t("modal_import_button"));
+        button.onClick(() => {
+          new ImportSettingsModal(this.app, this.plugin).open();
+        });
+      });
+
+    //////////////////////////////////////////////////
     // below for advanced settings
     //////////////////////////////////////////////////
     const advDetails = containerEl.createEl("details", { cls: "collapsible-section" });
@@ -1749,32 +1780,6 @@ export class RemotelySaveSettingTab extends PluginSettingTab {
       });
 
 
-
-    //////////////////////////////////////////////////
-    // below for import and export functions
-    //////////////////////////////////////////////////
-
-    // import and export
-    const importExportDiv = containerEl.createEl("div");
-    importExportDiv.createEl("h2", {
-      text: t("settings_importexport"),
-    });
-
-    new Setting(importExportDiv)
-      .setName(t("settings_importexport_title"))
-      .setDesc(t("settings_importexport_desc"))
-      .addButton((button) => {
-        button.setButtonText(t("settings_export_desc_button"));
-        button.onClick(() => {
-          new ExportSettingsModal(this.app, this.plugin).open();
-        });
-      })
-      .addButton((button) => {
-        button.setButtonText(t("modal_import_button"));
-        button.onClick(() => {
-          new ImportSettingsModal(this.app, this.plugin).open();
-        });
-      });
 
     //////////////////////////////////////////////////
     // below for debug

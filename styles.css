@@ -1,9 +1,10 @@
 /* set the styles */
 
 .vertical-tab-content h2 {
-  margin-left: -4px;
+  margin-left: 0;
   margin-top: 32px;
   font-size: 1.25em;
+  padding: 0;
 }
 
 .password-second-confirm {
@@ -83,11 +84,19 @@
 
 
 .check-conn-section {
-  margin-top: 24px;
-  margin-bottom: 24px;
-  border-top: 1px solid var(--background-modifier-border);
-  border-bottom: 1px solid var(--background-modifier-border);
-  padding: 4px 0;
+  margin-top: 32px;
+  border-top: none;
+  border-bottom: none;
+}
+
+.encryption-section {
+  border-top: none;
+  border-bottom: none;
+}
+
+.check-conn-section > .setting-item,
+.encryption-section > .setting-item {
+  border-top: none;
 }
 
 .ignore-paths-textarea {
@@ -118,17 +127,20 @@
   display: none;
 }
 
-.collapsible-section-summary::before {
+.collapsible-section-summary::after {
   content: "▶";
   font-size: 10px;
-  margin-right: 8px;
+  margin-left: 12px;
+  margin-right: 10px;
+  margin-top: 10px;
   color: var(--text-muted);
   transition: transform 0.15s ease;
   display: inline-block;
+  transform: translateY(3px);
 }
 
-details.collapsible-section[open] > .collapsible-section-summary::before {
-  transform: rotate(90deg);
+details.collapsible-section[open] > .collapsible-section-summary::after {
+  transform: rotate(90deg) translateX(3px);
 }
 
 .collapsible-section-h2 {
@@ -142,6 +154,24 @@ details.collapsible-section[open] > .collapsible-section-summary::before {
 .debug-section { margin-top: 8px; }
 .debug-section-summary { cursor: pointer; list-style: none; display: flex; align-items: center; }
 .debug-section-summary::-webkit-details-marker { display: none; }
-.debug-section-summary::before { content: "▶"; font-size: 10px; margin-right: 8px; color: var(--text-muted); transition: transform 0.15s ease; display: inline-block; }
-details.debug-section[open] > .debug-section-summary::before { transform: rotate(90deg); }
+.debug-section-summary::after { content: "▶"; font-size: 10px; margin-left: 12px; margin-right: 10px; margin-top: 10px; color: var(--text-muted); transition: transform 0.15s ease; display: inline-block; transform: translateY(3px); }
+details.debug-section[open] > .debug-section-summary::after { transform: rotate(90deg) translateX(3px); }
 .debug-section-h2 { margin: 0; display: inline; }
+
+/* Animate <details> collapse/expand. Requires Chromium 131+ for ::details-content
+   and interpolate-size: allow-keywords. Degrades gracefully (instant toggle). */
+:root {
+  interpolate-size: allow-keywords;
+}
+
+details.collapsible-section::details-content,
+details.debug-section::details-content {
+  block-size: 0;
+  overflow: hidden;
+  transition: block-size 0.5s ease, content-visibility 0.5s allow-discrete;
+}
+
+details.collapsible-section[open]::details-content,
+details.debug-section[open]::details-content {
+  block-size: auto;
+}
