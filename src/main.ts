@@ -17,9 +17,7 @@ import {
   COMMAND_CALLBACK,
   COMMAND_CALLBACK_ONEDRIVE,
   COMMAND_CALLBACK_DROPBOX,
-  COMMAND_URI,
 } from "./baseTypes";
-import { importQrCodeUri } from "./importExport";
 import {
   insertDeleteRecordByVault,
   insertRenameRecordByVault,
@@ -106,6 +104,7 @@ const DEFAULT_SETTINGS: RemotelySavePluginSettings = {
   trashLocal: false,
   syncTrash: false,
   syncBookmarks: true,
+  ignorePaths: [".trash", ".obsidian", "^_"],
 };
 
 interface OAuth2Info {
@@ -140,6 +139,7 @@ export default class RemotelySavePlugin extends Plugin {
   syncOnRemoteIntervalID?: number;
   statusBarIntervalID: number;
   statusBarObserver?: MutationObserver;
+  settingTab?: import("./settings").RemotelySaveSettingTab;
 
   async syncRun(triggerSource: SyncTriggerSourceType = "manual") {
     // Make sure two syncs can't run at the same time
@@ -214,7 +214,10 @@ export default class RemotelySavePlugin extends Plugin {
           // idle/icon handled after syncer() returns
         },
         undefined, // notifyFunc
-        undefined, // errNotifyFunc — errors surfaced via everythingOk in syncResult
+        async (_src: SyncTriggerSourceType, error: Error) => {
+          log.error(`[main] sync aborted:`, error?.message, error?.stack);
+          new Notice(`Sync aborted: ${error.message}`, 10000);
+        },
         undefined, // ribboonFunc
         undefined, // statusBarFunc
         async (_src: SyncTriggerSourceType, i: number, total: number) => {
@@ -492,23 +495,6 @@ export default class RemotelySavePlugin extends Plugin {
       })
     );
 
-    this.registerObsidianProtocolHandler(COMMAND_URI, async (inputParams) => {
-      const parsed = importQrCodeUri(inputParams, this.app.vault.getName());
-      if (parsed.status === "error") {
-        new Notice(parsed.message);
-      } else {
-        const copied = cloneDeep(parsed.result);
-        // new Notice(JSON.stringify(copied))
-        this.settings = Object.assign({}, this.settings, copied);
-        this.saveSettings();
-        new Notice(
-          t("protocol_saveqr", {
-            manifestName: this.manifest.name,
-          })
-        );
-      }
-    });
-
     this.registerObsidianProtocolHandler(
       COMMAND_CALLBACK,
       async (inputParams) => {
@@ -748,7 +734,8 @@ export default class RemotelySavePlugin extends Plugin {
       callback: () => new Notice(this.syncStatusText)
     });
     
-    this.addSettingTab(new RemotelySaveSettingTab(this.app, this));
+    this.settingTab = new RemotelySaveSettingTab(this.app, this);
+    this.addSettingTab(this.settingTab);
 
     // Show status bar show by default on desktop only
     if (this.settings.enableStatusBarInfo === undefined) {

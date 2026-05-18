@@ -1758,7 +1758,8 @@ export const doActualSync = async (
   profiler: Profiler | undefined,
   conflictAction: ConflictActionType,
   triggerSource: SyncTriggerSourceType,
-  callbackSyncProcess?: any
+  callbackSyncProcess?: any,
+  isFreshDevice?: boolean
 ) => {
   profiler?.addIndent();
   profiler?.insert("doActualSync: enter");
@@ -1792,6 +1793,7 @@ export const doActualSync = async (
   log.debug(`[syncV3] protectModifyPercentage=${protectModifyPercentage}`);
 
   if (
+    !isFreshDevice &&
     protectModifyPercentage >= 0 &&
     realModifyDeleteCount >= 0 &&
     allFilesCount > 0
@@ -1933,8 +1935,8 @@ export const doActualSync = async (
       deleteCount++;
     }
   }
-  log.debug(`[syncV3] sync complete: total=${totalCount} uploaded=${uploadCount} downloaded=${downloadCount} deleted=${deleteCount} ok=${everythingOk}`);
-  return { totalCount, uploadCount, downloadCount, deleteCount, everythingOk };
+  log.debug(`[syncV3] doActualSync complete: total=${totalCount} uploaded=${uploadCount} downloaded=${downloadCount} deleted=${deleteCount}`);
+  return { totalCount, uploadCount, downloadCount, deleteCount };
 };
 
 export type SyncStatusType =
@@ -1983,6 +1985,12 @@ export async function syncer(
   markIsSyncingFunc(true);
 
   let everythingOk = true;
+  let actualSyncCounts: {
+    totalCount: number;
+    uploadCount: number;
+    downloadCount: number;
+    deleteCount: number;
+  } | undefined;
   let step = 0;
 
   try {
@@ -2069,7 +2077,7 @@ export async function syncer(
       settings.syncConfigDir ?? false,
       settings.syncBookmarks ?? false,
       configDir,
-      settings.syncUnderscoreItems ?? false,
+      true, // syncUnderscoreItems removed; use ignorePaths regex (e.g. ^_.*) instead
       settings.ignorePaths ?? [],
       settings.onlyAllowPaths ?? [],
       fsEncrypt,
@@ -2109,7 +2117,7 @@ export async function syncer(
       await notifyFunc?.(triggerSource, step);
       await ribboonFunc?.(triggerSource, step);
       await statusBarFunc?.(triggerSource, step, everythingOk);
-      await doActualSync(
+      actualSyncCounts = await doActualSync(
         mixedEntityMappings,
         fsLocal,
         fsEncrypt,
@@ -2122,7 +2130,8 @@ export async function syncer(
         profiler,
         settings.conflictAction ?? "keep_newer",
         triggerSource,
-        callbackSyncProcess
+        callbackSyncProcess,
+        prevSyncEntityList.length === 0
       );
       profiler?.insert(`finish step${step} (actual sync)`);
     } else {
@@ -2151,6 +2160,13 @@ export async function syncer(
   await ribboonFunc?.(triggerSource, step);
   await statusBarFunc?.(triggerSource, step, everythingOk);
 
-  log.debug(`[syncV3] ending sync`);
+  log.debug(`[syncV3] ending sync ok=${everythingOk} counts=${JSON.stringify(actualSyncCounts ?? {})}`);
   markIsSyncingFunc(false);
+  return {
+    everythingOk,
+    totalCount: actualSyncCounts?.totalCount ?? 0,
+    uploadCount: actualSyncCounts?.uploadCount ?? 0,
+    downloadCount: actualSyncCounts?.downloadCount ?? 0,
+    deleteCount: actualSyncCounts?.deleteCount ?? 0,
+  };
 }

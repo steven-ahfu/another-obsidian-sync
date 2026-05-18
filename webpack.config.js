@@ -12,10 +12,12 @@ module.exports = {
   target: "web",
   output: {
     filename: "main.js",
-    path: __dirname,
+    path: path.resolve(__dirname, "build"),
     libraryTarget: "commonjs",
+    clean: true,
   },
   plugins: [
+    new webpack.optimize.LimitChunkCountPlugin({ maxChunks: 1 }),
     new webpack.DefinePlugin({
       "process.env.DEFAULT_DROPBOX_APP_KEY": `"${DEFAULT_DROPBOX_APP_KEY}"`,
       "process.env.DEFAULT_ONEDRIVE_CLIENT_ID": `"${DEFAULT_ONEDRIVE_CLIENT_ID}"`,
@@ -44,7 +46,7 @@ module.exports = {
       {
         test: /\.tsx?$/,
         use: { loader: "ts-loader", options: { transpileOnly: true } },
-        exclude: /node_modules\/(?!@protontech\/crypto)/,
+        exclude: /node_modules\/(?!(@protontech\/crypto|\.pnpm\/@protontech\+crypto))/,
       },
       {
         test: /\.svg?$/,

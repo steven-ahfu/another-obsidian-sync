@@ -1,82 +1,102 @@
-import QRCode from "qrcode";
 import cloneDeep from "lodash/cloneDeep";
+import { base64url } from "rfc4648";
+import { RemotelySavePluginSettings } from "./baseTypes";
+import { encryptArrayBuffer, decryptArrayBuffer } from "./encrypt";
+import { bufferToArrayBuffer } from "./misc";
 
-import {
-  COMMAND_URI,
-  UriParams,
-  RemotelySavePluginSettings,
-} from "./baseTypes";
+const EXPORT_VERSION = 1;
 
-import { log } from "./moreOnLog";
-
-export const exportQrCodeUri = async (
-  settings: RemotelySavePluginSettings,
-  currentVaultName: string,
-  pluginVersion: string
-) => {
-  const settings2 = cloneDeep(settings);
-  delete settings2.dropbox;
-  delete settings2.onedrive;
-  delete settings2.vaultRandomID;
-  const data = encodeURIComponent(JSON.stringify(settings2));
-  const vault = encodeURIComponent(currentVaultName);
-  const version = encodeURIComponent(pluginVersion);
-  const rawUri = `obsidian://${COMMAND_URI}?func=settings&version=${version}&vault=${vault}&data=${data}`;
-  const imgUri = await QRCode.toDataURL(rawUri);
-  return {
-    rawUri,
-    imgUri,
-  };
-};
-
-export interface ProcessQrCodeResultType {
-  status: "error" | "ok";
-  message: string;
-  result?: RemotelySavePluginSettings;
+interface ExportFileUnencrypted {
+  version: number;
+  encrypted: false;
+  settings: RemotelySavePluginSettings;
 }
 
-export const importQrCodeUri = (
-  inputParams: any,
-  currentVaultName: string
-): ProcessQrCodeResultType => {
-  let params = inputParams as UriParams;
-  if (
-    params.func === undefined ||
-    params.func !== "settings" ||
-    params.vault === undefined ||
-    params.data === undefined
-  ) {
-    return {
-      status: "error",
-      message: `the uri is not for exporting/importing settings: ${JSON.stringify(
-        inputParams
-      )}`,
-    };
-  }
+interface ExportFileEncrypted {
+  version: number;
+  encrypted: true;
+  data: string; // base64url AES-GCM ciphertext
+}
 
-  if (params.vault !== currentVaultName) {
-    return {
-      status: "error",
-      message: `the target vault is ${
-        params.vault
-      } but you are currently in ${currentVaultName}: ${JSON.stringify(
-        inputParams
-      )}`,
-    };
-  }
+type ExportFile = ExportFileUnencrypted | ExportFileEncrypted;
 
-  let settings = {} as RemotelySavePluginSettings;
-  try {
-    settings = JSON.parse(params.data);
-  } catch (e) {
-    return {
-      status: "error",
-      message: `errors while parsing settings: ${JSON.stringify(inputParams)}`,
-    };
+const stripSensitiveOAuthTokens = (settings: RemotelySavePluginSettings) => {
+  const s = cloneDeep(settings);
+  delete s.vaultRandomID;
+  if (s.dropbox) {
+    s.dropbox = { ...s.dropbox, accessToken: "", refreshToken: "", username: "" } as any;
   }
-  return {
-    status: "ok",
-    message: "ok",
-    result: settings,
-  };
+  if (s.onedrive) {
+    s.onedrive = { ...s.onedrive, accessToken: "", refreshToken: "", username: "" } as any;
+  }
+  return s;
 };
+
+export const exportSettingsToJSON = async (
+  settings: RemotelySavePluginSettings,
+  password?: string
+): Promise<string> => {
+  const stripped = stripSensitiveOAuthTokens(settings);
+
+  if (password && password !== "") {
+    const plaintext = new TextEncoder().encode(JSON.stringify(stripped));
+    const encrypted = await encryptArrayBuffer(bufferToArrayBuffer(plaintext), password);
+    const file: ExportFileEncrypted = {
+      version: EXPORT_VERSION,
+      encrypted: true,
+      data: base64url.stringify(new Uint8Array(encrypted), { pad: false }),
+    };
+    return JSON.stringify(file, null, 2);
+  } else {
+    const file: ExportFileUnencrypted = {
+      version: EXPORT_VERSION,
+      encrypted: false,
+      settings: stripped,
+    };
+    return JSON.stringify(file, null, 2);
+  }
+};
+
+export interface ImportSettingsResult {
+  status: "ok" | "error" | "wrong_password";
+  message: string;
+  settings?: RemotelySavePluginSettings;
+  needsPassword?: boolean;
+}
+
+export const importSettingsFromJSON = async (
+  json: string,
+  password?: string
+): Promise<ImportSettingsResult> => {
+  let file: ExportFile;
+  try {
+    file = JSON.parse(json);
+  } catch (e) {
+    return { status: "error", message: "Invalid file: could not parse JSON." };
+  }
+
+  if (!file.version || file.encrypted === undefined) {
+    return { status: "error", message: "Invalid file: missing required fields." };
+  }
+
+  if (!file.encrypted) {
+    return { status: "ok", message: "ok", settings: (file as ExportFileUnencrypted).settings };
+  }
+
+  // encrypted
+  if (!password || password === "") {
+    return { status: "error", message: "This file is encrypted. Please enter a password.", needsPassword: true };
+  }
+
+  try {
+    const cipherBytes = bufferToArrayBuffer(base64url.parse((file as ExportFileEncrypted).data, { loose: true }));
+    const decrypted = await decryptArrayBuffer(cipherBytes, password);
+    const settings = JSON.parse(new TextDecoder().decode(decrypted));
+    return { status: "ok", message: "ok", settings };
+  } catch (e) {
+    return { status: "wrong_password", message: "Wrong password or corrupted file." };
+  }
+};
+
+export const exportedSettingsHasOAuthTokens = (settings: RemotelySavePluginSettings) =>
+  !!(settings.dropbox?.accessToken || settings.onedrive?.accessToken);

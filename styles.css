@@ -1,5 +1,11 @@
 /* set the styles */
 
+.vertical-tab-content h2 {
+  margin-left: -4px;
+  margin-top: 32px;
+  font-size: 1.25em;
+}
+
 .password-second-confirm {
   font-weight: bold;
 }
@@ -74,3 +80,68 @@
 .remotely-sync-show-status-bar {
   display: flex !important;
 }
+
+
+.check-conn-section {
+  margin-top: 24px;
+  margin-bottom: 24px;
+  border-top: 1px solid var(--background-modifier-border);
+  border-bottom: 1px solid var(--background-modifier-border);
+  padding: 4px 0;
+}
+
+.ignore-paths-textarea {
+  width: 100%;
+  font-family: monospace;
+  font-size: 13px;
+  resize: vertical;
+  padding: 6px 8px;
+  background: var(--background-primary);
+  color: var(--text-normal);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 4px;
+  margin-top: 4px;
+}
+
+.collapsible-section {
+  margin-top: 8px;
+}
+
+.collapsible-section-summary {
+  cursor: pointer;
+  list-style: none;
+  display: flex;
+  align-items: center;
+}
+
+.collapsible-section-summary::-webkit-details-marker {
+  display: none;
+}
+
+.collapsible-section-summary::before {
+  content: "▶";
+  font-size: 10px;
+  margin-right: 8px;
+  color: var(--text-muted);
+  transition: transform 0.15s ease;
+  display: inline-block;
+}
+
+details.collapsible-section[open] > .collapsible-section-summary::before {
+  transform: rotate(90deg);
+}
+
+.collapsible-section-h2 {
+  margin: 0;
+  margin-top: 32px;
+  font-size: 1.1em;
+  display: inline;
+}
+
+/* aliases for backwards compat */
+.debug-section { margin-top: 8px; }
+.debug-section-summary { cursor: pointer; list-style: none; display: flex; align-items: center; }
+.debug-section-summary::-webkit-details-marker { display: none; }
+.debug-section-summary::before { content: "▶"; font-size: 10px; margin-right: 8px; color: var(--text-muted); transition: transform 0.15s ease; display: inline-block; }
+details.debug-section[open] > .debug-section-summary::before { transform: rotate(90deg); }
+.debug-section-h2 { margin: 0; display: inline; }
