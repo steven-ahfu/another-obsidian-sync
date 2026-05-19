@@ -1282,6 +1282,7 @@ const splitFourStepsOnEntityMappings = (
   let allFilesCount = 0; // how many files in entities
   let realModifyDeleteCount = 0; // how many files to be modified / deleted
   let realTotalCount = 0; // how many files to be delt with
+  const decisionCounts: Record<string, number> = {};
 
   for (let i = 0; i < sortedKeys.length; ++i) {
     const key = sortedKeys[i];
@@ -1291,6 +1292,7 @@ const splitFourStepsOnEntityMappings = (
     }
 
     const val = mixedEntityMappings[key];
+    decisionCounts[val.decision] = (decisionCounts[val.decision] ?? 0) + 1;
 
     if (!key.endsWith("/")) {
       allFilesCount += 1;
@@ -1404,6 +1406,7 @@ const splitFourStepsOnEntityMappings = (
     allFilesCount: allFilesCount,
     realModifyDeleteCount: realModifyDeleteCount,
     realTotalCount: realTotalCount,
+    decisionCounts: decisionCounts,
   };
 };
 
@@ -1772,12 +1775,18 @@ export const doActualSync = async (
     allFilesCount,
     realModifyDeleteCount,
     realTotalCount,
+    decisionCounts,
   } = splitFourStepsOnEntityMappings(mixedEntityMappings);
   // console.debug(`onlyMarkSyncedOps: ${JSON.stringify(onlyMarkSyncedOps)}`);
   // console.debug(`folderCreationOps: ${JSON.stringify(folderCreationOps)}`);
   // console.debug(`deletionOps: ${JSON.stringify(deletionOps)}`);
   // console.debug(`uploadDownloads: ${JSON.stringify(uploadDownloads)}`);
   log.debug(`[syncV3] allFilesCount=${allFilesCount} realModifyDeleteCount=${realModifyDeleteCount} realTotalCount=${realTotalCount}`);
+  const decisionBreakdown = Object.entries(decisionCounts)
+    .sort((a, b) => b[1] - a[1])
+    .map(([d, c]) => `${d}=${c}`)
+    .join(" ");
+  log.debug(`[syncV3] decision breakdown: ${decisionBreakdown}`);
   profiler?.insert("doActualSync: finish splitting steps");
 
   profiler?.insertSize(
@@ -2020,38 +2029,27 @@ export async function syncer(
       `finish step${step} (list partial remote and check password)`
     );
 
+    // steps 3-5 (list remote, list local, prev sync records) are independent —
+    // run them concurrently so local fs + IndexedDB don't sit idle while the
+    // remote walk is in flight (network is usually the slow leg).
     step = 3;
-    log.debug(`[syncV3] step: ${step} (list remote)`);
+    log.debug(`[syncV3] step: ${step}-5 (list remote + local + prev sync, in parallel)`);
     await notifyFunc?.(triggerSource, step);
     await ribboonFunc?.(triggerSource, step);
     await statusBarFunc?.(triggerSource, step, everythingOk);
-    const remoteEntityList = await fsEncrypt.walk();
-    // console.debug(`remoteEntityList:`);
-    // console.debug(remoteEntityList);
-    profiler?.insert(`finish step${step} (list remote)`);
-
-    step = 4;
-    log.debug(`[syncV3] step: ${step} (list local)`);
-    await notifyFunc?.(triggerSource, step);
-    await ribboonFunc?.(triggerSource, step);
-    await statusBarFunc?.(triggerSource, step, everythingOk);
-    const localEntityList = await fsLocal.walk();
-    // console.debug(`localEntityList:`);
-    // console.debug(localEntityList);
-    profiler?.insert(`finish step${step} (list local)`);
-
-    step = 5;
-    log.debug(`[syncV3] step: ${step} (prev sync records)`);
-    await notifyFunc?.(triggerSource, step);
-    await ribboonFunc?.(triggerSource, step);
-    await statusBarFunc?.(triggerSource, step, everythingOk);
-    const prevSyncEntityList = await getAllPrevSyncRecordsByVaultAndProfile(
+    const remoteWalkP = fsEncrypt.walk();
+    const localWalkP = fsLocal.walk();
+    const prevSyncP = getAllPrevSyncRecordsByVaultAndProfile(
       db,
       vaultRandomID,
       profileID
     );
-    // console.debug(`prevSyncEntityList:`);
-    // console.debug(prevSyncEntityList);
+    const [remoteEntityList, localEntityList, prevSyncEntityList] =
+      await Promise.all([remoteWalkP, localWalkP, prevSyncP]);
+    profiler?.insert(`finish step${step} (list remote)`);
+    step = 4;
+    profiler?.insert(`finish step${step} (list local)`);
+    step = 5;
     profiler?.insert(`finish step${step} (prev sync)`);
 
     // Inject synthesized deletions from config-dir snapshot if provided
