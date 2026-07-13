@@ -112,51 +112,56 @@
   margin-top: 4px;
 }
 
-.collapsible-section {
-  margin-top: 8px;
+/* The section's top spacing lives on the <details>, never on the <h2> inside the
+   summary: a margin on the heading inflates its margin box, and `align-items:
+   center` then centers the arrow against that box rather than the title text,
+   leaving the arrow floating above the words. */
+.collapsible-section,
+.debug-section {
+  margin-top: 32px;
 }
 
-.collapsible-section-summary {
+.collapsible-section-summary,
+.debug-section-summary {
   cursor: pointer;
   list-style: none;
   display: flex;
   align-items: center;
+  gap: 10px;
 }
 
-.collapsible-section-summary::-webkit-details-marker {
+.collapsible-section-summary::-webkit-details-marker,
+.debug-section-summary::-webkit-details-marker {
   display: none;
 }
 
-.collapsible-section-summary::after {
+.collapsible-section-summary::marker,
+.debug-section-summary::marker {
+  content: "";
+}
+
+.collapsible-section-summary::before,
+.debug-section-summary::before {
   content: "▶";
   font-size: 10px;
-  margin-left: 12px;
-  margin-right: 10px;
-  margin-top: 10px;
+  line-height: 1;
   color: var(--text-muted);
-  transition: transform 0.15s ease;
   display: inline-block;
-  transform: translateY(3px);
+  transition: transform 0.15s ease;
 }
 
-details.collapsible-section[open] > .collapsible-section-summary::after {
-  transform: rotate(90deg) translateX(3px);
+details.collapsible-section[open] > .collapsible-section-summary::before,
+details.debug-section[open] > .debug-section-summary::before {
+  transform: rotate(90deg);
 }
 
-.collapsible-section-h2 {
+/* Two classes, so this outranks the `.vertical-tab-content h2` rule above. */
+.collapsible-section-summary .collapsible-section-h2,
+.debug-section-summary .debug-section-h2 {
   margin: 0;
-  margin-top: 32px;
-  font-size: 1.1em;
+  padding: 0;
   display: inline;
 }
-
-/* aliases for backwards compat */
-.debug-section { margin-top: 8px; }
-.debug-section-summary { cursor: pointer; list-style: none; display: flex; align-items: center; }
-.debug-section-summary::-webkit-details-marker { display: none; }
-.debug-section-summary::after { content: "▶"; font-size: 10px; margin-left: 12px; margin-right: 10px; margin-top: 10px; color: var(--text-muted); transition: transform 0.15s ease; display: inline-block; transform: translateY(3px); }
-details.debug-section[open] > .debug-section-summary::after { transform: rotate(90deg) translateX(3px); }
-.debug-section-h2 { margin: 0; display: inline; }
 
 /* Animate <details> collapse/expand. Requires Chromium 131+ for ::details-content
    and interpolate-size: allow-keywords. Degrades gracefully (instant toggle). */

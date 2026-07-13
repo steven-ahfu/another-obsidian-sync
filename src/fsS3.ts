@@ -125,22 +125,48 @@ class ObsHttpHandler extends FetchHttpHandler {
     }
 
     // On Android, Obsidian's requestUrl base64-encodes the entire response body
-    // in Java heap before returning it to JS. For GET requests (downloads) this
-    // causes OOM on large files. Use native fetch() instead, which streams and
+    // in Java heap before returning it to JS. For object downloads this causes
+    // OOM on large files, so we use native fetch() instead, which streams and
     // does not buffer through Java Base64.
-    if (Platform.isAndroidApp && (method === "GET" || method === "HEAD")) {
-      const fetchInit: RequestInit = { method, headers: transformedHeaders };
-      if (abortSignal) fetchInit.signal = abortSignal as unknown as AbortSignal;
-      const fetchRsp = await fetch(url, fetchInit);
-      const headersLower: Record<string, string> = {};
-      fetchRsp.headers.forEach((value, key) => { headersLower[key.toLowerCase()] = value; });
-      return {
-        response: new HttpResponse({
-          headers: headersLower,
-          statusCode: fetchRsp.status,
-          body: fetchRsp.body,
-        }),
-      };
+    //
+    // Only GetObject may take that path. The S3 *API* calls — ListObjectsV2 (a
+    // GET) and HeadObject (a HEAD) — must stay on requestUrl: their responses are
+    // tiny, so there is no OOM to avoid, and native fetch() is subject to the
+    // webview CORS policy that this whole handler exists to bypass. Sending them
+    // through fetch() killed every mobile sync with "TypeError: Failed to fetch"
+    // inside _walkFromRoot, during the step-2 password check.
+    const isListRequest =
+      request.query !== undefined && "list-type" in request.query;
+    if (Platform.isAndroidApp && method === "GET" && !isListRequest) {
+      try {
+        const fetchInit: RequestInit = { method, headers: transformedHeaders };
+        if (abortSignal)
+          fetchInit.signal = abortSignal as unknown as AbortSignal;
+        const fetchRsp = await fetch(url, fetchInit);
+        const headersLower: Record<string, string> = {};
+        fetchRsp.headers.forEach((value, key) => {
+          headersLower[key.toLowerCase()] = value;
+        });
+        return {
+          response: new HttpResponse({
+            headers: headersLower,
+            statusCode: fetchRsp.status,
+            body: fetchRsp.body,
+          }),
+        };
+      } catch (e) {
+        if ((e as Error)?.name === "AbortError") {
+          throw e;
+        }
+        // Buckets without a CORS policy reject the streaming download. Fall back
+        // to requestUrl, which ignores CORS — heap-hungry on big files, but a
+        // working sync beats a failed one.
+        log.warn(
+          `[fsS3] native fetch failed for GET ${url}, falling back to requestUrl: ${
+            (e as Error)?.message
+          }`
+        );
+      }
     }
 
     let contentType: string | undefined = undefined;

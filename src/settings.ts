@@ -745,618 +745,34 @@ export class RemotelySaveSettingTab extends PluginSettingTab {
     serviceChooserDiv.createEl("h2", { text: t("settings_chooseservice") });
 
     //////////////////////////////////////////////////
-    // below for s3
+    // below for the selected remote service only
+    //
+    // Only the chosen service's section is built. Every service used to be
+    // rendered and the unselected ones hidden with CSS, which made the tab
+    // enormous and left them visible whenever the stylesheet lagged behind.
     //////////////////////////////////////////////////
 
-    const s3Div = containerEl.createEl("div", { cls: "s3-hide" });
-    s3Div.toggleClass("s3-hide", this.plugin.settings.serviceType !== "s3");
-    s3Div.createEl("h2", { text: t("settings_s3") });
-
-    new Setting(s3Div)
-      .setName(t("settings_s3_endpoint"))
-      .addText((text) =>
-        text
-          .setPlaceholder("")
-          .setValue(this.plugin.settings.s3.s3Endpoint)
-          .onChange(async (value) => {
-            this.plugin.settings.s3.s3Endpoint = value.trim();
-            await this.plugin.saveSettings();
-          })
-      );
-
-    new Setting(s3Div)
-      .setName(t("settings_s3_region"))
-      .setDesc(t("settings_s3_region_desc"))
-      .addText((text) =>
-        text
-          .setPlaceholder("")
-          .setValue(`${this.plugin.settings.s3.s3Region}`)
-          .onChange(async (value) => {
-            this.plugin.settings.s3.s3Region = value.trim();
-            await this.plugin.saveSettings();
-          })
-      );
-
-    new Setting(s3Div)
-      .setName(t("settings_s3_accesskeyid"))
-      .addText((text) => {
-        wrapTextWithPasswordHide(text);
-        text
-          .setPlaceholder("")
-          .setValue(`${this.plugin.settings.s3.s3AccessKeyID}`)
-          .onChange(async (value) => {
-            this.plugin.settings.s3.s3AccessKeyID = value.trim();
-            await this.plugin.saveSettings();
-          });
-      });
-
-    new Setting(s3Div)
-      .setName(t("settings_s3_secretaccesskey"))
-      .addText((text) => {
-        wrapTextWithPasswordHide(text);
-        text
-          .setPlaceholder("")
-          .setValue(`${this.plugin.settings.s3.s3SecretAccessKey}`)
-          .onChange(async (value) => {
-            this.plugin.settings.s3.s3SecretAccessKey = value.trim();
-            await this.plugin.saveSettings();
-          });
-      });
-
-    new Setting(s3Div)
-      .setName(t("settings_s3_bucketname"))
-      .addText((text) =>
-        text
-          .setPlaceholder("")
-          .setValue(`${this.plugin.settings.s3.s3BucketName}`)
-          .onChange(async (value) => {
-            this.plugin.settings.s3.s3BucketName = value.trim();
-            await this.plugin.saveSettings();
-          })
-      );
-
-    new Setting(s3Div)
-      .setName(t("settings_s3_urlstyle"))
-      .setDesc(t("settings_s3_urlstyle_desc"))
-      .addDropdown((dropdown) => {
-        dropdown.addOption(
-          "virtualHostedStyle",
-          "Virtual Hosted-Style (default)"
-        );
-        dropdown.addOption("pathStyle", "Path-Style");
-        dropdown
-          .setValue(
-            this.plugin.settings.s3.forcePathStyle
-              ? "pathStyle"
-              : "virtualHostedStyle"
-          )
-          .onChange(async (val: string) => {
-            this.plugin.settings.s3.forcePathStyle = val === "pathStyle";
-            await this.plugin.saveSettings();
-          });
-      });
-
-    if (VALID_REQURL) {
-      new Setting(s3Div)
-        .setName(t("settings_s3_bypasscorslocally"))
-        .setDesc(t("settings_s3_bypasscorslocally_desc"))
-        .addDropdown((dropdown) => {
-          dropdown
-            .addOption("disable", t("disable"))
-            .addOption("enable", t("enable"));
-
-          dropdown
-            .setValue(
-              `${this.plugin.settings.s3.bypassCorsLocally ? "enable" : "disable"
-              }`
-            )
-            .onChange(async (value) => {
-              if (value === "enable") {
-                this.plugin.settings.s3.bypassCorsLocally = true;
-              } else {
-                this.plugin.settings.s3.bypassCorsLocally = false;
-              }
-              await this.plugin.saveSettings();
-            });
-        });
+    switch (this.plugin.settings.serviceType) {
+      case "s3":
+        this.displayS3Settings(containerEl);
+        break;
+      case "dropbox":
+        this.displayDropboxSettings(containerEl);
+        break;
+      case "onedrive":
+        this.displayOnedriveSettings(containerEl);
+        break;
+      case "webdav":
+        this.displayWebdavSettings(containerEl);
+        break;
     }
-
-    new Setting(s3Div)
-      .setName(t("settings_s3_parts"))
-      .setDesc(t("settings_s3_parts_desc"))
-      .addDropdown((dropdown) => {
-        dropdown.addOption("1", "1");
-        dropdown.addOption("2", "2");
-        dropdown.addOption("3", "3");
-        dropdown.addOption("5", "5");
-        dropdown.addOption("10", "10");
-        dropdown.addOption("15", "15");
-        dropdown.addOption("20", "20 (default)");
-
-        dropdown
-          .setValue(`${this.plugin.settings.s3.partsConcurrency}`)
-          .onChange(async (val) => {
-            const realVal = parseInt(val);
-            this.plugin.settings.s3.partsConcurrency = realVal;
-            await this.plugin.saveSettings();
-          });
-      });
-
-
-
-    //////////////////////////////////////////////////
-    // below for dropbpx
-    //////////////////////////////////////////////////
-
-    const dropboxDiv = containerEl.createEl("div", { cls: "dropbox-hide" });
-    dropboxDiv.toggleClass(
-      "dropbox-hide",
-      this.plugin.settings.serviceType !== "dropbox"
-    );
-    dropboxDiv.createEl("h2", { text: t("settings_dropbox") });
-
-    const dropboxLongDescDiv = dropboxDiv.createEl("div", {
-      cls: "settings-long-desc",
-    });
-    for (const c of [
-      t("settings_dropbox_disclaimer1"),
-      t("settings_dropbox_disclaimer2"),
-    ]) {
-      dropboxLongDescDiv.createEl("p", {
-        text: c,
-        cls: "dropbox-disclaimer",
-      });
-    }
-    dropboxLongDescDiv.createEl("p", {
-      text: t("settings_dropbox_folder", {
-        pluginID: this.plugin.manifest.id,
-        remoteBaseDir:
-          this.plugin.settings.dropbox.remoteBaseDir ||
-          this.app.vault.getName(),
-      }),
-    });
-
-    const dropboxSelectAuthDiv = dropboxDiv.createDiv();
-    const dropboxAuthDiv = dropboxSelectAuthDiv.createDiv({
-      cls: "dropbox-auth-button-hide settings-auth-related",
-    });
-    const dropboxRevokeAuthDiv = dropboxSelectAuthDiv.createDiv({
-      cls: "dropbox-revoke-auth-button-hide settings-auth-related",
-    });
-
-    const dropboxRevokeAuthSetting = new Setting(dropboxRevokeAuthDiv)
-      .setName(t("settings_dropbox_revoke"))
-      .setDesc(
-        t("settings_dropbox_revoke_desc", {
-          username: this.plugin.settings.dropbox.username,
-        })
-      )
-      .addButton(async (button) => {
-        button.setButtonText(t("settings_dropbox_revoke_button"));
-        button.onClick(async () => {
-          try {
-            const self = this;
-            const client = new FakeFsDropbox(
-              this.plugin.settings.dropbox,
-              this.app.vault.getName(),
-              () => self.plugin.saveSettings()
-            );
-            await client.revokeAuth();
-            this.plugin.settings.dropbox = JSON.parse(
-              JSON.stringify(DEFAULT_DROPBOX_CONFIG)
-            );
-            await this.plugin.saveSettings();
-            dropboxAuthDiv.toggleClass(
-              "dropbox-auth-button-hide",
-              this.plugin.settings.dropbox.username !== ""
-            );
-            dropboxRevokeAuthDiv.toggleClass(
-              "dropbox-revoke-auth-button-hide",
-              this.plugin.settings.dropbox.username === ""
-            );
-            new Notice(t("settings_dropbox_revoke_notice"));
-          } catch (err) {
-            console.error(err);
-            new Notice(t("settings_dropbox_revoke_noticeerr"));
-          }
-        });
-      });
-
-    new Setting(dropboxRevokeAuthDiv)
-      .setName(t("settings_dropbox_clearlocal"))
-      .setDesc(t("settings_dropbox_clearlocal_desc"))
-      .addButton(async (button) => {
-        button.setButtonText(t("settings_dropbox_clearlocal_button"));
-        button.onClick(async () => {
-          this.plugin.settings.dropbox = JSON.parse(
-            JSON.stringify(DEFAULT_DROPBOX_CONFIG)
-          );
-          await this.plugin.saveSettings();
-          dropboxAuthDiv.toggleClass(
-            "dropbox-auth-button-hide",
-            this.plugin.settings.dropbox.username !== ""
-          );
-          dropboxRevokeAuthDiv.toggleClass(
-            "dropbox-revoke-auth-button-hide",
-            this.plugin.settings.dropbox.username === ""
-          );
-          new Notice(t("settings_dropbox_clearlocal_notice"));
-        });
-      });
-
-    new Setting(dropboxAuthDiv)
-      .setName(t("settings_dropbox_auth"))
-      .setDesc(t("settings_dropbox_auth_desc"))
-      .addButton(async (button) => {
-        button.setButtonText(t("settings_dropbox_auth_button"));
-        button.onClick(async () => {
-          const modal = new DropboxAuthModal(
-            this.app,
-            this.plugin,
-            dropboxAuthDiv,
-            dropboxRevokeAuthDiv,
-            dropboxRevokeAuthSetting
-          );
-          this.plugin.oauth2Info.helperModal = modal;
-          this.plugin.oauth2Info.authDiv = dropboxAuthDiv;
-          this.plugin.oauth2Info.revokeDiv = dropboxRevokeAuthDiv;
-          this.plugin.oauth2Info.revokeAuthSetting = dropboxRevokeAuthSetting;
-          modal.open();
-        });
-      });
-
-    dropboxAuthDiv.toggleClass(
-      "dropbox-auth-button-hide",
-      this.plugin.settings.dropbox.username !== ""
-    );
-    dropboxRevokeAuthDiv.toggleClass(
-      "dropbox-revoke-auth-button-hide",
-      this.plugin.settings.dropbox.username === ""
-    );
-
-    let newDropboxRemoteBaseDir =
-      this.plugin.settings.dropbox.remoteBaseDir || "";
-    new Setting(dropboxDiv)
-      .setName(t("settings_remotebasedir"))
-      .setDesc(t("settings_remotebasedir_desc"))
-      .addText((text) =>
-        text
-          .setPlaceholder(this.app.vault.getName())
-          .setValue(newDropboxRemoteBaseDir)
-          .onChange((value) => {
-            newDropboxRemoteBaseDir = value.trim();
-          })
-      )
-      .addButton((button) => {
-        button.setButtonText(t("confirm"));
-        button.onClick(() => {
-          new ChangeRemoteBaseDirModal(
-            this.app,
-            this.plugin,
-            newDropboxRemoteBaseDir,
-            "dropbox"
-          ).open();
-        });
-      });
-
-
-    //////////////////////////////////////////////////
-    // below for onedrive
-    //////////////////////////////////////////////////
-
-    const onedriveDiv = containerEl.createEl("div", { cls: "onedrive-hide" });
-    onedriveDiv.toggleClass(
-      "onedrive-hide",
-      this.plugin.settings.serviceType !== "onedrive"
-    );
-    onedriveDiv.createEl("h2", { text: t("settings_onedrive") });
-    const onedriveLongDescDiv = onedriveDiv.createEl("div", {
-      cls: "settings-long-desc",
-    });
-    for (const c of [
-      t("settings_onedrive_disclaimer1"),
-      t("settings_onedrive_disclaimer2"),
-    ]) {
-      onedriveLongDescDiv.createEl("p", {
-        text: c,
-        cls: "onedrive-disclaimer",
-      });
-    }
-
-    onedriveLongDescDiv.createEl("p", {
-      text: t("settings_onedrive_folder", {
-        pluginID: this.plugin.manifest.id,
-        remoteBaseDir:
-          this.plugin.settings.onedrive.remoteBaseDir ||
-          this.app.vault.getName(),
-      }),
-    });
-
-    onedriveLongDescDiv.createEl("p", {
-      text: t("settings_onedrive_nobiz"),
-    });
-
-    const onedriveSelectAuthDiv = onedriveDiv.createDiv();
-    const onedriveAuthDiv = onedriveSelectAuthDiv.createDiv({
-      cls: "onedrive-auth-button-hide settings-auth-related",
-    });
-    const onedriveRevokeAuthDiv = onedriveSelectAuthDiv.createDiv({
-      cls: "onedrive-revoke-auth-button-hide settings-auth-related",
-    });
-
-    const onedriveRevokeAuthSetting = new Setting(onedriveRevokeAuthDiv)
-      .setName(t("settings_onedrive_revoke"))
-      .setDesc(
-        t("settings_onedrive_revoke_desc", {
-          username: this.plugin.settings.onedrive.username,
-        })
-      )
-      .addButton(async (button) => {
-        button.setButtonText(t("settings_onedrive_revoke_button"));
-        button.onClick(async () => {
-          new OnedriveRevokeAuthModal(
-            this.app,
-            this.plugin,
-            onedriveAuthDiv,
-            onedriveRevokeAuthDiv
-          ).open();
-        });
-      });
-
-    new Setting(onedriveAuthDiv)
-      .setName(t("settings_onedrive_auth"))
-      .setDesc(t("settings_onedrive_auth_desc"))
-      .addButton(async (button) => {
-        button.setButtonText(t("settings_onedrive_auth_button"));
-        button.onClick(async () => {
-          const modal = new OnedriveAuthModal(
-            this.app,
-            this.plugin,
-            onedriveAuthDiv,
-            onedriveRevokeAuthDiv,
-            onedriveRevokeAuthSetting
-          );
-          this.plugin.oauth2Info.helperModal = modal;
-          this.plugin.oauth2Info.authDiv = onedriveAuthDiv;
-          this.plugin.oauth2Info.revokeDiv = onedriveRevokeAuthDiv;
-          this.plugin.oauth2Info.revokeAuthSetting = onedriveRevokeAuthSetting;
-          modal.open();
-        });
-      });
-
-    onedriveAuthDiv.toggleClass(
-      "onedrive-auth-button-hide",
-      this.plugin.settings.onedrive.username !== ""
-    );
-    onedriveRevokeAuthDiv.toggleClass(
-      "onedrive-revoke-auth-button-hide",
-      this.plugin.settings.onedrive.username === ""
-    );
-
-    let newOnedriveRemoteBaseDir =
-      this.plugin.settings.onedrive.remoteBaseDir || "";
-    new Setting(onedriveDiv)
-      .setName(t("settings_remotebasedir"))
-      .setDesc(t("settings_remotebasedir_desc"))
-      .addText((text) =>
-        text
-          .setPlaceholder(this.app.vault.getName())
-          .setValue(newOnedriveRemoteBaseDir)
-          .onChange((value) => {
-            newOnedriveRemoteBaseDir = value.trim();
-          })
-      )
-      .addButton((button) => {
-        button.setButtonText(t("confirm"));
-        button.onClick(() => {
-          new ChangeRemoteBaseDirModal(
-            this.app,
-            this.plugin,
-            newOnedriveRemoteBaseDir,
-            "onedrive"
-          ).open();
-        });
-      });
-
-
-    //////////////////////////////////////////////////
-    // below for webdav
-    //////////////////////////////////////////////////
-
-    const webdavDiv = containerEl.createEl("div", { cls: "webdav-hide" });
-    webdavDiv.toggleClass(
-      "webdav-hide",
-      this.plugin.settings.serviceType !== "webdav"
-    );
-
-    webdavDiv.createEl("h2", { text: t("settings_webdav") });
-
-    const webdavLongDescDiv = webdavDiv.createEl("div", {
-      cls: "settings-long-desc",
-    });
-
-    webdavLongDescDiv.createEl("p", {
-      text: t("settings_webdav_disclaimer1"),
-      cls: "webdav-disclaimer",
-    });
-
-    if (!VALID_REQURL) {
-      webdavLongDescDiv.createEl("p", {
-        text: t("settings_webdav_cors_os"),
-      });
-
-      webdavLongDescDiv.createEl("p", {
-        text: t("settings_webdav_cors"),
-      });
-    }
-
-    webdavLongDescDiv.createEl("p", {
-      text: t("settings_webdav_folder", {
-        remoteBaseDir:
-          this.plugin.settings.webdav.remoteBaseDir || this.app.vault.getName(),
-      }),
-    });
-
-    new Setting(webdavDiv)
-      .setName(t("settings_webdav_addr"))
-      .setDesc(t("settings_webdav_addr_desc"))
-      .addText((text) =>
-        text
-          .setPlaceholder("")
-          .setValue(this.plugin.settings.webdav.address)
-          .onChange(async (value) => {
-            this.plugin.settings.webdav.address = value.trim();
-            if (
-              this.plugin.settings.webdav.depth === "auto_1" ||
-              this.plugin.settings.webdav.depth === "auto_infinity"
-            ) {
-              this.plugin.settings.webdav.depth = "auto_unknown";
-            }
-
-            // TODO: any more elegant way?
-            applyWebdavPresetRulesInplace(this.plugin.settings.webdav);
-
-            // normally saved
-            await this.plugin.saveSettings();
-          })
-      );
-
-    new Setting(webdavDiv)
-      .setName(t("settings_webdav_user"))
-      .setDesc(t("settings_webdav_user_desc"))
-      .addText((text) => {
-        wrapTextWithPasswordHide(text);
-        text
-          .setPlaceholder("")
-          .setValue(this.plugin.settings.webdav.username)
-          .onChange(async (value) => {
-            this.plugin.settings.webdav.username = value.trim();
-            if (
-              this.plugin.settings.webdav.depth === "auto_1" ||
-              this.plugin.settings.webdav.depth === "auto_infinity"
-            ) {
-              this.plugin.settings.webdav.depth = "auto_unknown";
-            }
-            await this.plugin.saveSettings();
-          });
-      });
-
-    new Setting(webdavDiv)
-      .setName(t("settings_webdav_password"))
-      .setDesc(t("settings_webdav_password_desc"))
-      .addText((text) => {
-        wrapTextWithPasswordHide(text);
-        text
-          .setPlaceholder("")
-          .setValue(this.plugin.settings.webdav.password)
-          .onChange(async (value) => {
-            this.plugin.settings.webdav.password = value.trim();
-            if (
-              this.plugin.settings.webdav.depth === "auto_1" ||
-              this.plugin.settings.webdav.depth === "auto_infinity"
-            ) {
-              this.plugin.settings.webdav.depth = "auto_unknown";
-            }
-            await this.plugin.saveSettings();
-          });
-      });
-
-    new Setting(webdavDiv)
-      .setName(t("settings_webdav_auth"))
-      .setDesc(t("settings_webdav_auth_desc"))
-      .addDropdown(async (dropdown) => {
-        dropdown.addOption("basic", "basic");
-        if (VALID_REQURL) {
-          dropdown.addOption("digest", "digest");
-        }
-
-        // new version config, copied to old version, we need to reset it
-        if (!VALID_REQURL && this.plugin.settings.webdav.authType !== "basic") {
-          this.plugin.settings.webdav.authType = "basic";
-          await this.plugin.saveSettings();
-        }
-
-        dropdown
-          .setValue(this.plugin.settings.webdav.authType)
-          .onChange(async (val: WebdavAuthType) => {
-            this.plugin.settings.webdav.authType = val;
-            await this.plugin.saveSettings();
-          });
-      });
-
-    new Setting(webdavDiv)
-      .setName(t("settings_webdav_depth"))
-      .setDesc(t("settings_webdav_depth_desc"))
-      .addDropdown((dropdown) => {
-        dropdown.addOption("auto", t("settings_webdav_depth_auto"));
-        dropdown.addOption("manual_1", t("settings_webdav_depth_1"));
-        dropdown.addOption("manual_infinity", t("settings_webdav_depth_inf"));
-
-        let initVal = "auto";
-        const autoOptions: Set<WebdavDepthType> = new Set([
-          "auto_unknown",
-          "auto_1",
-          "auto_infinity",
-        ]);
-        if (autoOptions.has(this.plugin.settings.webdav.depth)) {
-          initVal = "auto";
-        } else {
-          initVal = this.plugin.settings.webdav.depth || "auto";
-        }
-
-        type DepthOption = "auto" | "manual_1" | "manual_infinity";
-        dropdown.setValue(initVal).onChange(async (val: DepthOption) => {
-          if (val === "auto") {
-            this.plugin.settings.webdav.depth = "auto_unknown";
-            this.plugin.settings.webdav.manualRecursive = false;
-          } else if (val === "manual_1") {
-            this.plugin.settings.webdav.depth = "manual_1";
-            this.plugin.settings.webdav.manualRecursive = true;
-          } else if (val === "manual_infinity") {
-            this.plugin.settings.webdav.depth = "manual_infinity";
-            this.plugin.settings.webdav.manualRecursive = false;
-          }
-
-          // TODO: any more elegant way?
-          applyWebdavPresetRulesInplace(this.plugin.settings.webdav);
-
-          // normally save
-          await this.plugin.saveSettings();
-        });
-      });
-
-    let newWebdavRemoteBaseDir =
-      this.plugin.settings.webdav.remoteBaseDir || "";
-    new Setting(webdavDiv)
-      .setName(t("settings_remotebasedir"))
-      .setDesc(t("settings_remotebasedir_desc"))
-      .addText((text) =>
-        text
-          .setPlaceholder(this.app.vault.getName())
-          .setValue(newWebdavRemoteBaseDir)
-          .onChange((value) => {
-            newWebdavRemoteBaseDir = value.trim();
-          })
-      )
-      .addButton((button) => {
-        button.setButtonText(t("confirm"));
-        button.onClick(() => {
-          new ChangeRemoteBaseDirModal(
-            this.app,
-            this.plugin,
-            newWebdavRemoteBaseDir,
-            "webdav"
-          ).open();
-        });
-      });
-
 
     //////////////////////////////////////////////////
     // below for general chooser (part 2/2)
     //////////////////////////////////////////////////
 
-    // we need to create chooser
-    // after all service-div-s being created
+    // the chooser lives in a div created before the service section, so it
+    // still renders above it
     new Setting(serviceChooserDiv)
       .setName(t("settings_chooseservice"))
       .setDesc(t("settings_chooseservice_desc"))
@@ -1369,23 +785,8 @@ export class RemotelySaveSettingTab extends PluginSettingTab {
           .setValue(this.plugin.settings.serviceType)
           .onChange(async (val: SUPPORTED_SERVICES_TYPE) => {
             this.plugin.settings.serviceType = val;
-            s3Div.toggleClass(
-              "s3-hide",
-              this.plugin.settings.serviceType !== "s3"
-            );
-            dropboxDiv.toggleClass(
-              "dropbox-hide",
-              this.plugin.settings.serviceType !== "dropbox"
-            );
-            onedriveDiv.toggleClass(
-              "onedrive-hide",
-              this.plugin.settings.serviceType !== "onedrive"
-            );
-            webdavDiv.toggleClass(
-              "webdav-hide",
-              this.plugin.settings.serviceType !== "webdav"
-            );
             await this.plugin.saveSettings();
+            this.display(); // rebuild so only the newly chosen service shows
           });
       });
 
@@ -1965,6 +1366,619 @@ export class RemotelySaveSettingTab extends PluginSettingTab {
 
           new Notice(t("settings_reset_sync_metadata_notice_end"));
           log.debug("Remote metadata file deleted. (2/2)")
+        });
+      });
+  }
+
+  private displayS3Settings(containerEl: HTMLElement) {
+    const t = (x: TransItemType, vars?: any) => {
+      return this.plugin.i18n.t(x, vars);
+    };
+
+    //////////////////////////////////////////////////
+    // below for s3
+    //////////////////////////////////////////////////
+
+    const s3Div = containerEl.createDiv();
+    s3Div.createEl("h2", { text: t("settings_s3") });
+
+    new Setting(s3Div)
+      .setName(t("settings_s3_endpoint"))
+      .addText((text) =>
+        text
+          .setPlaceholder("")
+          .setValue(this.plugin.settings.s3.s3Endpoint)
+          .onChange(async (value) => {
+            this.plugin.settings.s3.s3Endpoint = value.trim();
+            await this.plugin.saveSettings();
+          })
+      );
+
+    new Setting(s3Div)
+      .setName(t("settings_s3_region"))
+      .setDesc(t("settings_s3_region_desc"))
+      .addText((text) =>
+        text
+          .setPlaceholder("")
+          .setValue(`${this.plugin.settings.s3.s3Region}`)
+          .onChange(async (value) => {
+            this.plugin.settings.s3.s3Region = value.trim();
+            await this.plugin.saveSettings();
+          })
+      );
+
+    new Setting(s3Div)
+      .setName(t("settings_s3_accesskeyid"))
+      .addText((text) => {
+        wrapTextWithPasswordHide(text);
+        text
+          .setPlaceholder("")
+          .setValue(`${this.plugin.settings.s3.s3AccessKeyID}`)
+          .onChange(async (value) => {
+            this.plugin.settings.s3.s3AccessKeyID = value.trim();
+            await this.plugin.saveSettings();
+          });
+      });
+
+    new Setting(s3Div)
+      .setName(t("settings_s3_secretaccesskey"))
+      .addText((text) => {
+        wrapTextWithPasswordHide(text);
+        text
+          .setPlaceholder("")
+          .setValue(`${this.plugin.settings.s3.s3SecretAccessKey}`)
+          .onChange(async (value) => {
+            this.plugin.settings.s3.s3SecretAccessKey = value.trim();
+            await this.plugin.saveSettings();
+          });
+      });
+
+    new Setting(s3Div)
+      .setName(t("settings_s3_bucketname"))
+      .addText((text) =>
+        text
+          .setPlaceholder("")
+          .setValue(`${this.plugin.settings.s3.s3BucketName}`)
+          .onChange(async (value) => {
+            this.plugin.settings.s3.s3BucketName = value.trim();
+            await this.plugin.saveSettings();
+          })
+      );
+
+    new Setting(s3Div)
+      .setName(t("settings_s3_urlstyle"))
+      .setDesc(t("settings_s3_urlstyle_desc"))
+      .addDropdown((dropdown) => {
+        dropdown.addOption(
+          "virtualHostedStyle",
+          "Virtual Hosted-Style (default)"
+        );
+        dropdown.addOption("pathStyle", "Path-Style");
+        dropdown
+          .setValue(
+            this.plugin.settings.s3.forcePathStyle
+              ? "pathStyle"
+              : "virtualHostedStyle"
+          )
+          .onChange(async (val: string) => {
+            this.plugin.settings.s3.forcePathStyle = val === "pathStyle";
+            await this.plugin.saveSettings();
+          });
+      });
+
+    if (VALID_REQURL) {
+      new Setting(s3Div)
+        .setName(t("settings_s3_bypasscorslocally"))
+        .setDesc(t("settings_s3_bypasscorslocally_desc"))
+        .addDropdown((dropdown) => {
+          dropdown
+            .addOption("disable", t("disable"))
+            .addOption("enable", t("enable"));
+
+          dropdown
+            .setValue(
+              `${this.plugin.settings.s3.bypassCorsLocally ? "enable" : "disable"
+              }`
+            )
+            .onChange(async (value) => {
+              if (value === "enable") {
+                this.plugin.settings.s3.bypassCorsLocally = true;
+              } else {
+                this.plugin.settings.s3.bypassCorsLocally = false;
+              }
+              await this.plugin.saveSettings();
+            });
+        });
+    }
+
+    new Setting(s3Div)
+      .setName(t("settings_s3_parts"))
+      .setDesc(t("settings_s3_parts_desc"))
+      .addDropdown((dropdown) => {
+        dropdown.addOption("1", "1");
+        dropdown.addOption("2", "2");
+        dropdown.addOption("3", "3");
+        dropdown.addOption("5", "5");
+        dropdown.addOption("10", "10");
+        dropdown.addOption("15", "15");
+        dropdown.addOption("20", "20 (default)");
+
+        dropdown
+          .setValue(`${this.plugin.settings.s3.partsConcurrency}`)
+          .onChange(async (val) => {
+            const realVal = parseInt(val);
+            this.plugin.settings.s3.partsConcurrency = realVal;
+            await this.plugin.saveSettings();
+          });
+      });
+  }
+
+  private displayDropboxSettings(containerEl: HTMLElement) {
+    const t = (x: TransItemType, vars?: any) => {
+      return this.plugin.i18n.t(x, vars);
+    };
+
+    //////////////////////////////////////////////////
+    // below for dropbpx
+    //////////////////////////////////////////////////
+
+    const dropboxDiv = containerEl.createDiv();
+    dropboxDiv.createEl("h2", { text: t("settings_dropbox") });
+
+    const dropboxLongDescDiv = dropboxDiv.createEl("div", {
+      cls: "settings-long-desc",
+    });
+    for (const c of [
+      t("settings_dropbox_disclaimer1"),
+      t("settings_dropbox_disclaimer2"),
+    ]) {
+      dropboxLongDescDiv.createEl("p", {
+        text: c,
+        cls: "dropbox-disclaimer",
+      });
+    }
+    dropboxLongDescDiv.createEl("p", {
+      text: t("settings_dropbox_folder", {
+        pluginID: this.plugin.manifest.id,
+        remoteBaseDir:
+          this.plugin.settings.dropbox.remoteBaseDir ||
+          this.app.vault.getName(),
+      }),
+    });
+
+    const dropboxSelectAuthDiv = dropboxDiv.createDiv();
+    const dropboxAuthDiv = dropboxSelectAuthDiv.createDiv({
+      cls: "dropbox-auth-button-hide settings-auth-related",
+    });
+    const dropboxRevokeAuthDiv = dropboxSelectAuthDiv.createDiv({
+      cls: "dropbox-revoke-auth-button-hide settings-auth-related",
+    });
+
+    const dropboxRevokeAuthSetting = new Setting(dropboxRevokeAuthDiv)
+      .setName(t("settings_dropbox_revoke"))
+      .setDesc(
+        t("settings_dropbox_revoke_desc", {
+          username: this.plugin.settings.dropbox.username,
+        })
+      )
+      .addButton(async (button) => {
+        button.setButtonText(t("settings_dropbox_revoke_button"));
+        button.onClick(async () => {
+          try {
+            const self = this;
+            const client = new FakeFsDropbox(
+              this.plugin.settings.dropbox,
+              this.app.vault.getName(),
+              () => self.plugin.saveSettings()
+            );
+            await client.revokeAuth();
+            this.plugin.settings.dropbox = JSON.parse(
+              JSON.stringify(DEFAULT_DROPBOX_CONFIG)
+            );
+            await this.plugin.saveSettings();
+            dropboxAuthDiv.toggleClass(
+              "dropbox-auth-button-hide",
+              this.plugin.settings.dropbox.username !== ""
+            );
+            dropboxRevokeAuthDiv.toggleClass(
+              "dropbox-revoke-auth-button-hide",
+              this.plugin.settings.dropbox.username === ""
+            );
+            new Notice(t("settings_dropbox_revoke_notice"));
+          } catch (err) {
+            console.error(err);
+            new Notice(t("settings_dropbox_revoke_noticeerr"));
+          }
+        });
+      });
+
+    new Setting(dropboxRevokeAuthDiv)
+      .setName(t("settings_dropbox_clearlocal"))
+      .setDesc(t("settings_dropbox_clearlocal_desc"))
+      .addButton(async (button) => {
+        button.setButtonText(t("settings_dropbox_clearlocal_button"));
+        button.onClick(async () => {
+          this.plugin.settings.dropbox = JSON.parse(
+            JSON.stringify(DEFAULT_DROPBOX_CONFIG)
+          );
+          await this.plugin.saveSettings();
+          dropboxAuthDiv.toggleClass(
+            "dropbox-auth-button-hide",
+            this.plugin.settings.dropbox.username !== ""
+          );
+          dropboxRevokeAuthDiv.toggleClass(
+            "dropbox-revoke-auth-button-hide",
+            this.plugin.settings.dropbox.username === ""
+          );
+          new Notice(t("settings_dropbox_clearlocal_notice"));
+        });
+      });
+
+    new Setting(dropboxAuthDiv)
+      .setName(t("settings_dropbox_auth"))
+      .setDesc(t("settings_dropbox_auth_desc"))
+      .addButton(async (button) => {
+        button.setButtonText(t("settings_dropbox_auth_button"));
+        button.onClick(async () => {
+          const modal = new DropboxAuthModal(
+            this.app,
+            this.plugin,
+            dropboxAuthDiv,
+            dropboxRevokeAuthDiv,
+            dropboxRevokeAuthSetting
+          );
+          this.plugin.oauth2Info.helperModal = modal;
+          this.plugin.oauth2Info.authDiv = dropboxAuthDiv;
+          this.plugin.oauth2Info.revokeDiv = dropboxRevokeAuthDiv;
+          this.plugin.oauth2Info.revokeAuthSetting = dropboxRevokeAuthSetting;
+          modal.open();
+        });
+      });
+
+    dropboxAuthDiv.toggleClass(
+      "dropbox-auth-button-hide",
+      this.plugin.settings.dropbox.username !== ""
+    );
+    dropboxRevokeAuthDiv.toggleClass(
+      "dropbox-revoke-auth-button-hide",
+      this.plugin.settings.dropbox.username === ""
+    );
+
+    let newDropboxRemoteBaseDir =
+      this.plugin.settings.dropbox.remoteBaseDir || "";
+    new Setting(dropboxDiv)
+      .setName(t("settings_remotebasedir"))
+      .setDesc(t("settings_remotebasedir_desc"))
+      .addText((text) =>
+        text
+          .setPlaceholder(this.app.vault.getName())
+          .setValue(newDropboxRemoteBaseDir)
+          .onChange((value) => {
+            newDropboxRemoteBaseDir = value.trim();
+          })
+      )
+      .addButton((button) => {
+        button.setButtonText(t("confirm"));
+        button.onClick(() => {
+          new ChangeRemoteBaseDirModal(
+            this.app,
+            this.plugin,
+            newDropboxRemoteBaseDir,
+            "dropbox"
+          ).open();
+        });
+      });
+  }
+
+  private displayOnedriveSettings(containerEl: HTMLElement) {
+    const t = (x: TransItemType, vars?: any) => {
+      return this.plugin.i18n.t(x, vars);
+    };
+
+    //////////////////////////////////////////////////
+    // below for onedrive
+    //////////////////////////////////////////////////
+
+    const onedriveDiv = containerEl.createDiv();
+    onedriveDiv.createEl("h2", { text: t("settings_onedrive") });
+    const onedriveLongDescDiv = onedriveDiv.createEl("div", {
+      cls: "settings-long-desc",
+    });
+    for (const c of [
+      t("settings_onedrive_disclaimer1"),
+      t("settings_onedrive_disclaimer2"),
+    ]) {
+      onedriveLongDescDiv.createEl("p", {
+        text: c,
+        cls: "onedrive-disclaimer",
+      });
+    }
+
+    onedriveLongDescDiv.createEl("p", {
+      text: t("settings_onedrive_folder", {
+        pluginID: this.plugin.manifest.id,
+        remoteBaseDir:
+          this.plugin.settings.onedrive.remoteBaseDir ||
+          this.app.vault.getName(),
+      }),
+    });
+
+    onedriveLongDescDiv.createEl("p", {
+      text: t("settings_onedrive_nobiz"),
+    });
+
+    const onedriveSelectAuthDiv = onedriveDiv.createDiv();
+    const onedriveAuthDiv = onedriveSelectAuthDiv.createDiv({
+      cls: "onedrive-auth-button-hide settings-auth-related",
+    });
+    const onedriveRevokeAuthDiv = onedriveSelectAuthDiv.createDiv({
+      cls: "onedrive-revoke-auth-button-hide settings-auth-related",
+    });
+
+    const onedriveRevokeAuthSetting = new Setting(onedriveRevokeAuthDiv)
+      .setName(t("settings_onedrive_revoke"))
+      .setDesc(
+        t("settings_onedrive_revoke_desc", {
+          username: this.plugin.settings.onedrive.username,
+        })
+      )
+      .addButton(async (button) => {
+        button.setButtonText(t("settings_onedrive_revoke_button"));
+        button.onClick(async () => {
+          new OnedriveRevokeAuthModal(
+            this.app,
+            this.plugin,
+            onedriveAuthDiv,
+            onedriveRevokeAuthDiv
+          ).open();
+        });
+      });
+
+    new Setting(onedriveAuthDiv)
+      .setName(t("settings_onedrive_auth"))
+      .setDesc(t("settings_onedrive_auth_desc"))
+      .addButton(async (button) => {
+        button.setButtonText(t("settings_onedrive_auth_button"));
+        button.onClick(async () => {
+          const modal = new OnedriveAuthModal(
+            this.app,
+            this.plugin,
+            onedriveAuthDiv,
+            onedriveRevokeAuthDiv,
+            onedriveRevokeAuthSetting
+          );
+          this.plugin.oauth2Info.helperModal = modal;
+          this.plugin.oauth2Info.authDiv = onedriveAuthDiv;
+          this.plugin.oauth2Info.revokeDiv = onedriveRevokeAuthDiv;
+          this.plugin.oauth2Info.revokeAuthSetting = onedriveRevokeAuthSetting;
+          modal.open();
+        });
+      });
+
+    onedriveAuthDiv.toggleClass(
+      "onedrive-auth-button-hide",
+      this.plugin.settings.onedrive.username !== ""
+    );
+    onedriveRevokeAuthDiv.toggleClass(
+      "onedrive-revoke-auth-button-hide",
+      this.plugin.settings.onedrive.username === ""
+    );
+
+    let newOnedriveRemoteBaseDir =
+      this.plugin.settings.onedrive.remoteBaseDir || "";
+    new Setting(onedriveDiv)
+      .setName(t("settings_remotebasedir"))
+      .setDesc(t("settings_remotebasedir_desc"))
+      .addText((text) =>
+        text
+          .setPlaceholder(this.app.vault.getName())
+          .setValue(newOnedriveRemoteBaseDir)
+          .onChange((value) => {
+            newOnedriveRemoteBaseDir = value.trim();
+          })
+      )
+      .addButton((button) => {
+        button.setButtonText(t("confirm"));
+        button.onClick(() => {
+          new ChangeRemoteBaseDirModal(
+            this.app,
+            this.plugin,
+            newOnedriveRemoteBaseDir,
+            "onedrive"
+          ).open();
+        });
+      });
+  }
+
+  private displayWebdavSettings(containerEl: HTMLElement) {
+    const t = (x: TransItemType, vars?: any) => {
+      return this.plugin.i18n.t(x, vars);
+    };
+
+    //////////////////////////////////////////////////
+    // below for webdav
+    //////////////////////////////////////////////////
+
+    const webdavDiv = containerEl.createDiv();
+
+    webdavDiv.createEl("h2", { text: t("settings_webdav") });
+
+    const webdavLongDescDiv = webdavDiv.createEl("div", {
+      cls: "settings-long-desc",
+    });
+
+    webdavLongDescDiv.createEl("p", {
+      text: t("settings_webdav_disclaimer1"),
+      cls: "webdav-disclaimer",
+    });
+
+    if (!VALID_REQURL) {
+      webdavLongDescDiv.createEl("p", {
+        text: t("settings_webdav_cors_os"),
+      });
+
+      webdavLongDescDiv.createEl("p", {
+        text: t("settings_webdav_cors"),
+      });
+    }
+
+    webdavLongDescDiv.createEl("p", {
+      text: t("settings_webdav_folder", {
+        remoteBaseDir:
+          this.plugin.settings.webdav.remoteBaseDir || this.app.vault.getName(),
+      }),
+    });
+
+    new Setting(webdavDiv)
+      .setName(t("settings_webdav_addr"))
+      .setDesc(t("settings_webdav_addr_desc"))
+      .addText((text) =>
+        text
+          .setPlaceholder("")
+          .setValue(this.plugin.settings.webdav.address)
+          .onChange(async (value) => {
+            this.plugin.settings.webdav.address = value.trim();
+            if (
+              this.plugin.settings.webdav.depth === "auto_1" ||
+              this.plugin.settings.webdav.depth === "auto_infinity"
+            ) {
+              this.plugin.settings.webdav.depth = "auto_unknown";
+            }
+
+            // TODO: any more elegant way?
+            applyWebdavPresetRulesInplace(this.plugin.settings.webdav);
+
+            // normally saved
+            await this.plugin.saveSettings();
+          })
+      );
+
+    new Setting(webdavDiv)
+      .setName(t("settings_webdav_user"))
+      .setDesc(t("settings_webdav_user_desc"))
+      .addText((text) => {
+        wrapTextWithPasswordHide(text);
+        text
+          .setPlaceholder("")
+          .setValue(this.plugin.settings.webdav.username)
+          .onChange(async (value) => {
+            this.plugin.settings.webdav.username = value.trim();
+            if (
+              this.plugin.settings.webdav.depth === "auto_1" ||
+              this.plugin.settings.webdav.depth === "auto_infinity"
+            ) {
+              this.plugin.settings.webdav.depth = "auto_unknown";
+            }
+            await this.plugin.saveSettings();
+          });
+      });
+
+    new Setting(webdavDiv)
+      .setName(t("settings_webdav_password"))
+      .setDesc(t("settings_webdav_password_desc"))
+      .addText((text) => {
+        wrapTextWithPasswordHide(text);
+        text
+          .setPlaceholder("")
+          .setValue(this.plugin.settings.webdav.password)
+          .onChange(async (value) => {
+            this.plugin.settings.webdav.password = value.trim();
+            if (
+              this.plugin.settings.webdav.depth === "auto_1" ||
+              this.plugin.settings.webdav.depth === "auto_infinity"
+            ) {
+              this.plugin.settings.webdav.depth = "auto_unknown";
+            }
+            await this.plugin.saveSettings();
+          });
+      });
+
+    new Setting(webdavDiv)
+      .setName(t("settings_webdav_auth"))
+      .setDesc(t("settings_webdav_auth_desc"))
+      .addDropdown(async (dropdown) => {
+        dropdown.addOption("basic", "basic");
+        if (VALID_REQURL) {
+          dropdown.addOption("digest", "digest");
+        }
+
+        // new version config, copied to old version, we need to reset it
+        if (!VALID_REQURL && this.plugin.settings.webdav.authType !== "basic") {
+          this.plugin.settings.webdav.authType = "basic";
+          await this.plugin.saveSettings();
+        }
+
+        dropdown
+          .setValue(this.plugin.settings.webdav.authType)
+          .onChange(async (val: WebdavAuthType) => {
+            this.plugin.settings.webdav.authType = val;
+            await this.plugin.saveSettings();
+          });
+      });
+
+    new Setting(webdavDiv)
+      .setName(t("settings_webdav_depth"))
+      .setDesc(t("settings_webdav_depth_desc"))
+      .addDropdown((dropdown) => {
+        dropdown.addOption("auto", t("settings_webdav_depth_auto"));
+        dropdown.addOption("manual_1", t("settings_webdav_depth_1"));
+        dropdown.addOption("manual_infinity", t("settings_webdav_depth_inf"));
+
+        let initVal = "auto";
+        const autoOptions: Set<WebdavDepthType> = new Set([
+          "auto_unknown",
+          "auto_1",
+          "auto_infinity",
+        ]);
+        if (autoOptions.has(this.plugin.settings.webdav.depth)) {
+          initVal = "auto";
+        } else {
+          initVal = this.plugin.settings.webdav.depth || "auto";
+        }
+
+        type DepthOption = "auto" | "manual_1" | "manual_infinity";
+        dropdown.setValue(initVal).onChange(async (val: DepthOption) => {
+          if (val === "auto") {
+            this.plugin.settings.webdav.depth = "auto_unknown";
+            this.plugin.settings.webdav.manualRecursive = false;
+          } else if (val === "manual_1") {
+            this.plugin.settings.webdav.depth = "manual_1";
+            this.plugin.settings.webdav.manualRecursive = true;
+          } else if (val === "manual_infinity") {
+            this.plugin.settings.webdav.depth = "manual_infinity";
+            this.plugin.settings.webdav.manualRecursive = false;
+          }
+
+          // TODO: any more elegant way?
+          applyWebdavPresetRulesInplace(this.plugin.settings.webdav);
+
+          // normally save
+          await this.plugin.saveSettings();
+        });
+      });
+
+    let newWebdavRemoteBaseDir =
+      this.plugin.settings.webdav.remoteBaseDir || "";
+    new Setting(webdavDiv)
+      .setName(t("settings_remotebasedir"))
+      .setDesc(t("settings_remotebasedir_desc"))
+      .addText((text) =>
+        text
+          .setPlaceholder(this.app.vault.getName())
+          .setValue(newWebdavRemoteBaseDir)
+          .onChange((value) => {
+            newWebdavRemoteBaseDir = value.trim();
+          })
+      )
+      .addButton((button) => {
+        button.setButtonText(t("confirm"));
+        button.onClick(() => {
+          new ChangeRemoteBaseDirModal(
+            this.app,
+            this.plugin,
+            newWebdavRemoteBaseDir,
+            "webdav"
+          ).open();
         });
       });
   }

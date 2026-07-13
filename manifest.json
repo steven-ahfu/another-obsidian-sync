@@ -1,7 +1,7 @@
 {
   "id": "another-obsidian-sync",
   "name": "Another Obsidian Sync",
-  "version": "0.5.0",
+  "version": "0.5.1",
   "minAppVersion": "1.4.11",
   "description": "Fork of remotely-sync by sboesen. Security and feature updates for syncing notes to cloud services.",
   "author": "steven-ahfu",

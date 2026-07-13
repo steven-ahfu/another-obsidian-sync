@@ -123,7 +123,11 @@ const iconNameLogs = "file-text";
 export default class RemotelySavePlugin extends Plugin {
   settings: RemotelySavePluginSettings;
   db: InternalDBs;
-  syncStatus: SyncStatusType;
+  // must be "idle" from construction: onload() only reaches updateSyncStatus()
+  // at its very end, and the ribbon is live well before that. Leaving it
+  // undefined made every tap during startup fail the `!== "idle"` guard and log
+  // "already running in stage: undefined".
+  syncStatus: SyncStatusType = "idle";
   syncStatusText?: string;
   statusBarElement: HTMLSpanElement;
   oauth2Info: OAuth2Info;
